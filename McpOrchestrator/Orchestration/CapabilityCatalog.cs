@@ -108,9 +108,11 @@ public sealed partial class CapabilityCatalog : ICapabilityCatalog
         {
             config = JsonSerializer.Deserialize<OrchestratorConfig>(File.ReadAllText(configPath), ReadOptions);
         }
-        catch (JsonException ex)
+        catch (Exception ex) when (ex is JsonException or IOException or UnauthorizedAccessException)
         {
-            logger.LogError(ex, "Failed to parse orchestrator config at {ConfigPath}.", configPath);
+            // Never let a bad/locked/unreadable config crash startup — degrade to an empty
+            // catalog so the server still comes up (and the problem is visible in the log).
+            logger.LogError(ex, "Failed to read or parse orchestrator config at {ConfigPath}.", configPath);
             return new CapabilityCatalog(Array.Empty<CapabilityDescriptor>());
         }
 
