@@ -1,0 +1,44 @@
+{
+  "//": "Downstream MCP catalog for the orchestrator. Each capability is one MCP server.",
+  "//launch": "command/args/workingDirectory say HOW to connect; summary/instructions tell the model WHEN to use it.",
+  "//tokens": "${SOLUTION_DIR} = repo root, ${CONFIG_DIR} = this file's folder; any other ${VAR} resolves from environment.",
+  "//override": "Point CONSAFE_ORCHESTRATOR_CONFIG at a different file to swap this catalog.",
+  "capabilities": [
+    {
+      "name": "jira",
+      "summary": "Issue tracking — read and search simulated JIRA tickets.",
+      "instructions": "Use for anything about tickets/issues/bugs/sprint status. Include the issue key (e.g. PROJ-123) when you know it.",
+      "enabled": true,
+      "transport": "stdio",
+      "command": "dotnet",
+      "args": [
+        "run",
+        "--project",
+        "${SOLUTION_DIR}/ConsafeWorkflow.DemoMcp/ConsafeWorkflow.DemoMcp.csproj",
+        "--no-build",
+        "--",
+        "--persona",
+        "jira"
+      ],
+      "workingDirectory": "${SOLUTION_DIR}"
+    },
+    {
+      "name": "codegen",
+      "summary": "Code generation — scaffold a simple C# class from a short spec.",
+      "instructions": "Use to generate boilerplate. Provide a class name (and optionally a comma-separated list of fields).",
+      "enabled": true,
+      "transport": "stdio",
+      "command": "dotnet",
+      "args": [
+        "run",
+        "--project",
+        "${SOLUTION_DIR}/ConsafeWorkflow.DemoMcp/ConsafeWorkflow.DemoMcp.csproj",
+        "--no-build",
+        "--",
+        "--persona",
+        "codegen"
+      ],
+      "workingDirectory": "${SOLUTION_DIR}"
+    }
+  ]
+}

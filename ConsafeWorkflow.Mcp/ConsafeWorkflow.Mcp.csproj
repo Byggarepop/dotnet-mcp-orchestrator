@@ -10,8 +10,18 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <!-- ModelContextProtocol = server + hosting integration. .Core (transitive, pinned
+         here for clarity) carries the MCP *client* types (McpClient, StdioClientTransport)
+         the orchestrator uses to connect to downstream MCP servers. -->
     <PackageReference Include="ModelContextProtocol" Version="1.4.0" />
+    <PackageReference Include="ModelContextProtocol.Core" Version="1.4.0" />
     <PackageReference Include="Microsoft.Extensions.Hosting" Version="9.0.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Ship the downstream catalog next to the assembly as a discovery fallback (the
+         in-repo source file is preferred when present; see CapabilityCatalog.ResolveConfigPath). -->
+    <Content Include="orchestrator.config.json" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
 </Project>
