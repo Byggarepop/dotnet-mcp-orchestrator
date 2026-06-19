@@ -1,0 +1,17 @@
+{
+  "servers": {
+    "consafeworkflow": {
+      "type": "stdio",
+      "command": "dotnet",
+      "args": [
+        "run",
+        "--project",
+        "C:/Users/sebas/Projects/MCP/ConsafeWorkflow.Mcp/ConsafeWorkflow.Mcp.csproj",
+        "--no-build"
+      ],
+      "env": {
+        "CONSAFEWORKFLOW_DISABLE_ELICITATION": "0"
+      }
+    }
+  }
+}

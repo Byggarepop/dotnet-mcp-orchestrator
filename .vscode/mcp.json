@@ -1,0 +1,14 @@
+{
+  "servers": {
+    "consafeworkflow": {
+      "type": "stdio",
+      "command": "dotnet",
+      "args": [
+        "run",
+        "--project",
+        "${workspaceFolder}/ConsafeWorkflow.Mcp/ConsafeWorkflow.Mcp.csproj",
+        "--no-build"
+      ]
+    }
+  }
+}

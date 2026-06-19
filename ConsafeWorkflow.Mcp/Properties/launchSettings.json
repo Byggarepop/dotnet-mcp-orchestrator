@@ -1,0 +1,13 @@
+{
+  "profiles": {
+    "ConsafeWorkflow.Mcp": {
+      "commandName": "Project"
+    },
+    "ConsafeWorkflow.Mcp (wait for debugger)": {
+      "commandName": "Project",
+      "environmentVariables": {
+        "CONSAFEWORKFLOW_DEBUG": "1"
+      }
+    }
+  }
+}

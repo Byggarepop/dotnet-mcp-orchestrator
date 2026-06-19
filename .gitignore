@@ -1,0 +1,7 @@
+## .NET build output
+[Bb]in/
+[Oo]bj/
+
+## User-specific / IDE
+.vs/
+*.user
