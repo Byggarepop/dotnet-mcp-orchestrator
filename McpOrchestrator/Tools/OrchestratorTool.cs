@@ -16,6 +16,10 @@ namespace McpOrchestrator.Tools;
 [McpServerToolType]
 public sealed class OrchestratorTool
 {
+    /// <summary>
+    /// Tool <c>list_capabilities</c>: returns the configured downstream capabilities (name,
+    /// summary, instructions) as JSON. The agent calls this first to discover what it can reach.
+    /// </summary>
     [McpServerTool(Name = "list_capabilities")]
     [Description(
         "List the downstream MCP capabilities this orchestrator can reach (e.g. 'jira', " +
@@ -39,6 +43,11 @@ public sealed class OrchestratorTool
         return Task.FromResult(OrchestratorJson.Serialize(views));
     }
 
+    /// <summary>
+    /// Tool <c>discover_tools</c>: connects to one capability and returns its concrete tools
+    /// (name, description, JSON input schema) so the agent can pick a tool and build arguments
+    /// for <c>route</c>. Returns a structured <see cref="ErrorView"/> if the capability is unknown.
+    /// </summary>
     [McpServerTool(Name = "discover_tools")]
     [Description(
         "Connect to one downstream capability and list its concrete tools, each with its " +
@@ -69,6 +78,11 @@ public sealed class OrchestratorTool
         }
     }
 
+    /// <summary>
+    /// Tool <c>route</c> (preferred dispatch): forwards a specific tool call — chosen by the
+    /// agent, with arguments the agent fills — to a capability and returns the downstream result
+    /// as a structured <see cref="RouteView"/>. Exceptions become a structured <see cref="ErrorView"/>.
+    /// </summary>
     [McpServerTool(Name = "route")]
     [Description(
         "PREFERRED dispatch tool. Forward a tool call to a downstream capability and return " +
@@ -104,6 +118,12 @@ public sealed class OrchestratorTool
         }
     }
 
+    /// <summary>
+    /// Tool <c>request</c> (best-effort convenience): lets the orchestrator's <see cref="IRoutePlanner"/>
+    /// guess the tool and arguments from a natural-language description, then invokes it. Reliable
+    /// only for trivial cases — prefer <c>route</c>. Returns the same <see cref="RouteView"/> shape,
+    /// with the planner's <see cref="RouteView.Rationale"/> populated.
+    /// </summary>
     [McpServerTool(Name = "request")]
     [Description(
         "BEST-EFFORT CONVENIENCE — prefer 'route'. Describe in natural language what you need " +

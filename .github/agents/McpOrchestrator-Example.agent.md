@@ -39,12 +39,14 @@ treat the entries below as a guide:
    (name + what each is for + usage instructions).
 2. **Inspect (when you want precise control).** Call `discover_tools(capability)` to get a
    capability's concrete tools and their input schemas.
-3. **Act — two ways:**
-   - **Precise:** `route(capability, tool, arguments)` — you pick the exact tool and pass an
-     `arguments` object matching its schema. Best when you know exactly what you want.
-   - **Delegated:** `request(capability, request)` — describe your need in plain language and
-     let the orchestrator choose the tool and arguments. Best when you don't want to inspect
-     the tool list. The response includes a `rationale` explaining what it chose.
+3. **Act:**
+   - **Preferred — `route(capability, tool, arguments)`:** you pick the exact tool and pass an
+     `arguments` object matching its schema, following the capability's instructions. This is
+     the reliable path; use it for all real work.
+   - **Fallback — `request(capability, request)`:** describe your need in plain language and let
+     the orchestrator *guess* the tool and arguments. It uses a simple keyword heuristic with no
+     language understanding, so it only works for trivial cases (e.g. the request literally
+     contains an issue key). Prefer `route`.
 4. **Use the result.** Each call returns JSON: `route`/`request` give `text` (and
    `structured` when the downstream tool provides it) plus the `arguments` actually sent.
    Errors come back as `{ "error": ..., "availableCapabilities": [...] }` — read them and
@@ -64,5 +66,5 @@ User: "What's the status of PROJ-1, and scaffold a Customer class with Id, Name,
 Then summarise both results for the user.
 ```
 
-> Prefer `route` when you know the tool; use `request` to let the orchestrator pick. Either
-> way, one agent + one MCP reaches every downstream server.
+> Prefer `route` and fill the arguments yourself per each capability's instructions; `request`
+> is only a best-effort shortcut. Either way, one agent + one MCP reaches every downstream server.

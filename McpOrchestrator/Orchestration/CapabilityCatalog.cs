@@ -17,6 +17,7 @@ public sealed partial class CapabilityCatalog : ICapabilityCatalog
 
     private readonly Dictionary<string, CapabilityDescriptor> _byName;
 
+    /// <summary>Private constructor; build instances via <see cref="Load"/> or <see cref="FromDescriptors"/>.</summary>
     private CapabilityCatalog(IReadOnlyList<CapabilityDescriptor> capabilities)
     {
         Capabilities = capabilities;
@@ -135,6 +136,7 @@ public sealed partial class CapabilityCatalog : ICapabilityCatalog
         return catalog;
     }
 
+    /// <summary>Applies <c>${VAR}</c> substitution in place to a descriptor's command, args, working dir, and env.</summary>
     private static CapabilityDescriptor Resolve(
         CapabilityDescriptor c, IReadOnlyDictionary<string, string> tokens, ILogger logger)
     {

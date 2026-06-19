@@ -40,6 +40,7 @@ Console.Error.WriteLine($"[DemoMcp] starting with persona '{persona}'.");
 
 await builder.Build().RunAsync();
 
+// Returns the value following the given flag in the argument list, or null if absent.
 static string? GetArgValue(string[] args, string name)
 {
     for (var i = 0; i < args.Length - 1; i++)

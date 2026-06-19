@@ -12,6 +12,7 @@ namespace McpOrchestrator.DemoMcp;
 [McpServerToolType]
 public sealed class CodegenTools
 {
+    /// <summary>Emits a sealed C# class named <paramref name="className"/> with a string property per field.</summary>
     [McpServerTool(Name = "generate_class")]
     [Description("Generate a simple C# class. Provide a class name and an optional comma-separated list of fields.")]
     public static string GenerateClass(

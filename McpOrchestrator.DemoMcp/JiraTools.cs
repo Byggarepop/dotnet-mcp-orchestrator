@@ -18,6 +18,7 @@ public sealed class JiraTools
         ["PROJ-3"] = new("PROJ-3", "Heuristic route planner for natural-language requests", "To Do", "unassigned"),
     };
 
+    /// <summary>Returns the issue for <paramref name="issueKey"/>, or a placeholder if the key is unknown.</summary>
     [McpServerTool(Name = "get_issue")]
     [Description("Get a single JIRA issue by its key (e.g. PROJ-1). Returns key, summary, status, assignee.")]
     public static Issue GetIssue(
@@ -26,6 +27,7 @@ public sealed class JiraTools
             ? issue
             : new Issue(issueKey ?? "(none)", "Unknown issue (demo data only)", "Unknown", "unassigned");
 
+    /// <summary>Returns issues whose summary contains <paramref name="query"/> (all issues if it is blank).</summary>
     [McpServerTool(Name = "search_issues")]
     [Description("Search JIRA issues by a free-text query against the summary. Returns matching issues.")]
     public static IReadOnlyList<Issue> SearchIssues(

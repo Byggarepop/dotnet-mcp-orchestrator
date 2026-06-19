@@ -30,6 +30,7 @@ public sealed class DownstreamConnectionManager : IDownstreamConnectionManager, 
     private readonly ConcurrentDictionary<string, Lazy<Task<McpClient>>> _clients =
         new(StringComparer.OrdinalIgnoreCase);
 
+    /// <summary>Creates the manager. Connections are opened lazily on first use, not here.</summary>
     public DownstreamConnectionManager(
         ICapabilityCatalog catalog,
         ILoggerFactory loggerFactory,
@@ -40,6 +41,7 @@ public sealed class DownstreamConnectionManager : IDownstreamConnectionManager, 
         _logger = logger;
     }
 
+    /// <inheritdoc />
     public async Task<IReadOnlyList<McpClientTool>> ListToolsAsync(string capability, CancellationToken cancellationToken)
     {
         var descriptor = Resolve(capability);
@@ -57,6 +59,7 @@ public sealed class DownstreamConnectionManager : IDownstreamConnectionManager, 
         }
     }
 
+    /// <inheritdoc />
     public async Task<CallToolResult> CallToolAsync(
         string capability,
         string tool,
@@ -97,6 +100,11 @@ public sealed class DownstreamConnectionManager : IDownstreamConnectionManager, 
     private static TimeoutException Timeout(CapabilityDescriptor descriptor, string what) =>
         new($"{what} timed out after {descriptor.CallTimeoutSeconds ?? DefaultCallTimeoutSeconds}s.");
 
+    /// <summary>
+    /// Returns the cached connection for a capability, creating it once on first use. A faulted
+    /// connect is evicted so a later call retries; the caller's token only governs the wait, not
+    /// the shared connect itself.
+    /// </summary>
     private async Task<McpClient> GetClientAsync(CapabilityDescriptor descriptor, CancellationToken cancellationToken)
     {
         var lazy = _clients.GetOrAdd(
@@ -117,6 +125,10 @@ public sealed class DownstreamConnectionManager : IDownstreamConnectionManager, 
         }
     }
 
+    /// <summary>
+    /// Launches a capability's downstream server over stdio and completes the MCP handshake,
+    /// subject to the capability's connect timeout. Only the <c>stdio</c> transport is supported.
+    /// </summary>
     private async Task<McpClient> ConnectAsync(CapabilityDescriptor d)
     {
         if (!string.Equals(d.Transport, "stdio", StringComparison.OrdinalIgnoreCase))
@@ -165,6 +177,7 @@ public sealed class DownstreamConnectionManager : IDownstreamConnectionManager, 
         return client;
     }
 
+    /// <summary>Disposes every connection that was actually opened. Errors are ignored during shutdown.</summary>
     public async ValueTask DisposeAsync()
     {
         foreach (var lazy in _clients.Values)

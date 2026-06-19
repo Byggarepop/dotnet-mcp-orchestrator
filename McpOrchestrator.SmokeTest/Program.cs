@@ -80,6 +80,7 @@ await CallAsync(client, "discover_tools", new() { ["capability"] = "does-not-exi
 
 Console.WriteLine("\n=== smoke test complete ===");
 
+// Calls one orchestrator meta-tool and prints any text content blocks from the result.
 static async Task CallAsync(McpClient client, string tool, Dictionary<string, object?> arguments)
 {
     Console.WriteLine($"\n=== {tool}({JsonSerializer.Serialize(arguments)}) ===");
@@ -97,6 +98,7 @@ static async Task CallAsync(McpClient client, string tool, Dictionary<string, ob
     }
 }
 
+// Walks up from the running assembly to the directory containing the solution file.
 static string FindSolutionDir()
 {
     var dir = new DirectoryInfo(AppContext.BaseDirectory);

@@ -157,6 +157,7 @@ public sealed partial class HeuristicRoutePlanner : IRoutePlanner
         return names;
     }
 
+    /// <summary>Splits text into a lowercased set of words, dropping short tokens and stop-words.</summary>
     private static HashSet<string> Tokenize(string? text) =>
         WordRegex()
             .Matches(text ?? string.Empty)
