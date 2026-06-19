@@ -39,6 +39,20 @@
         "codegen"
       ],
       "workingDirectory": "${SOLUTION_DIR}"
+    },
+    {
+      "name": "files",
+      "summary": "Filesystem access — list, read and search files under the repository root.",
+      "instructions": "Use to inspect real files on disk. Provide an absolute path within the allowed root. Backed by the official @modelcontextprotocol/server-filesystem reference server.",
+      "enabled": true,
+      "transport": "stdio",
+      "command": "npx",
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-filesystem",
+        "${SOLUTION_DIR}"
+      ],
+      "workingDirectory": "${SOLUTION_DIR}"
     }
   ]
 }

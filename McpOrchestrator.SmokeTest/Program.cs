@@ -53,6 +53,28 @@ await CallAsync(client, "route", new()
     ["arguments"] = new Dictionary<string, object?> { ["className"] = "Customer", ["fields"] = "Id, Name, Email" },
 });
 
+// --- Real third-party downstream: @modelcontextprotocol/server-filesystem over npx ---
+// This capability is NOT our code: it proves cross-vendor interop and a second launch
+// path (node/npx, not dotnet) through the same orchestrator seam.
+await CallAsync(client, "discover_tools", new() { ["capability"] = "files" });
+
+await CallAsync(client, "route", new()
+{
+    ["capability"] = "files",
+    ["tool"] = "list_directory",
+    ["arguments"] = new Dictionary<string, object?> { ["path"] = solutionDir },
+});
+
+await CallAsync(client, "route", new()
+{
+    ["capability"] = "files",
+    ["tool"] = "read_text_file",
+    ["arguments"] = new Dictionary<string, object?>
+    {
+        ["path"] = Path.Combine(solutionDir, "McpOrchestrator.slnx"),
+    },
+});
+
 // Error path: an unknown capability should come back as a structured error, not a crash.
 await CallAsync(client, "discover_tools", new() { ["capability"] = "does-not-exist" });
 
