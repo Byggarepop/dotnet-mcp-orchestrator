@@ -25,10 +25,18 @@ The orchestrator is therefore both:
 
 1. The agent asks the orchestrator **what it can reach** (`list_capabilities`) — the catalog
    comes from config, so each capability has a name, a summary, and usage instructions.
-2. The agent expresses **what it needs** — either precisely (`route` a specific downstream
-   tool) or in plain language (`request`, and the orchestrator picks the tool).
+2. The agent reads each capability's **instructions** and calls `discover_tools` to see the
+   exact tools and schemas, then `route`s a specific tool with arguments it fills in itself.
 3. The orchestrator **connects to that downstream MCP**, invokes the tool, and **relays the
    result back** to the agent.
+
+> **Design principle: the orchestrator is a courier, not an interpreter.** It forwards exactly
+> what the agent sends and does no language understanding of its own. The interpreting is the
+> LLM's job — which is why each capability's `instructions` spell out the precise arguments to
+> pass (e.g. *"always include the Jira issue key as `{\"issueKey\":\"PROJ-123\"}`"*). This
+> makes the system reliable for tasks that need no interpretation by the orchestrator. The
+> `request` tool (orchestrator-side guessing) exists only as a best-effort convenience — see
+> below.
 
 ## The tools (agent-facing surface)
 
@@ -36,13 +44,24 @@ The orchestrator is therefore both:
 | --- | --- | --- |
 | `list_capabilities` | — | List the downstream MCPs (name, summary, instructions). Call first. |
 | `discover_tools` | `capability` | Connect to one capability and list its tools + input schemas. |
-| `route` | `capability`, `tool`, `arguments` | Forward a specific tool call and return its result. |
-| `request` | `capability`, `request` | Describe a need in words; the orchestrator picks the tool/args. |
+| `route` | `capability`, `tool`, `arguments` | **Preferred.** Forward a specific tool call (you pick the tool and fill the arguments) and return its result. |
+| `request` | `capability`, `request` | *Best-effort convenience.* Describe a need in words; the orchestrator **guesses** the tool/args with a keyword heuristic. Unreliable — prefer `route`. |
 
 `route`/`request` return JSON: `text` (flattened text content), `structured` (when the
 downstream tool provides structured content), the `arguments` actually sent, and — for
 `request` — a `rationale` for the choice. Errors are returned as
 `{ "error": ..., "availableCapabilities": [...] }` rather than thrown.
+
+### Why `route` over `request`
+
+`request` asks the orchestrator to turn a sentence into a tool call. The shipped
+`HeuristicRoutePlanner` does this with keyword matching and a couple of regexes — it has **no
+language understanding**, so it only works when the tool is obvious and the request literally
+contains the argument values (e.g. an explicit `PROJ-123` key). Give it
+*"generate a class named Customer with fields Id, Name, Email"* and it dumps the whole
+sentence into `className`. The capable interpreter is already in the loop — the agent's LLM —
+so the reliable pattern is `discover_tools` + `route`, with the model filling the arguments per
+each capability's instructions. Treat `request` as a shortcut for trivial cases only.
 
 ## Configuring downstream MCPs
 

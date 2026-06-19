@@ -7,7 +7,7 @@
     {
       "name": "jira",
       "summary": "Issue tracking — read and search simulated JIRA tickets.",
-      "instructions": "Use for anything about tickets/issues/bugs/sprint status. Include the issue key (e.g. PROJ-123) when you know it.",
+      "instructions": "Use for tickets/issues/bugs/sprint status. To read one ticket call tool 'get_issue' and ALWAYS pass the Jira issue key as {\"issueKey\":\"PROJ-123\"} — extract the key from the user's request yourself; never pass a sentence. To search call 'search_issues' with {\"query\":\"<keywords>\"}. If you do not have an issue key, use search first to find it.",
       "enabled": true,
       "transport": "stdio",
       "command": "dotnet",
@@ -25,7 +25,7 @@
     {
       "name": "codegen",
       "summary": "Code generation — scaffold a simple C# class from a short spec.",
-      "instructions": "Use to generate boilerplate. Provide a class name (and optionally a comma-separated list of fields).",
+      "instructions": "Use to generate boilerplate. Call tool 'generate_class' and pass the BARE class name plus optional fields, e.g. {\"className\":\"Customer\",\"fields\":\"Id, Name, Email\"}. Parse the name and fields out of the user's request yourself — never put a full sentence into 'className'.",
       "enabled": true,
       "transport": "stdio",
       "command": "dotnet",
@@ -43,7 +43,7 @@
     {
       "name": "files",
       "summary": "Filesystem access — list, read and search files under the repository root.",
-      "instructions": "Use to inspect real files on disk. Provide an absolute path within the allowed root. Backed by the official @modelcontextprotocol/server-filesystem reference server.",
+      "instructions": "Use to inspect real files on disk. Call 'discover_tools' first — common tools: 'list_directory' {\"path\":\"<dir>\"}, 'read_text_file' {\"path\":\"<file>\"}, 'search_files' {\"path\":\"<dir>\",\"pattern\":\"**/*.cs\"}. ALWAYS pass an absolute path within the allowed root. Backed by the official @modelcontextprotocol/server-filesystem reference server.",
       "enabled": true,
       "transport": "stdio",
       "command": "npx",

@@ -22,9 +22,12 @@ public sealed class OrchestratorTool
     [Description(
         "List the downstream MCP capabilities this orchestrator can reach (e.g. 'jira', " +
         "'codegen', 'db'). Call this FIRST to find out what is available. Each entry has a " +
-        "name, a summary of what it does, and instructions for when/how to use it. To see a " +
-        "capability's concrete tools call 'discover_tools'; to invoke one call 'route', or " +
-        "describe your need in words with 'request'.")]
+        "name, a summary of what it does, and instructions telling you exactly what to pass. " +
+        "The reliable path is: read the instructions here, call 'discover_tools' to see a " +
+        "capability's tools and their schemas, then call 'route' with the exact tool and " +
+        "arguments. Follow each capability's instructions literally (e.g. 'always include the " +
+        "Jira issue key') — the orchestrator forwards what you send verbatim and does not " +
+        "interpret it.")]
     public static Task<string> ListCapabilities(
         ICapabilityCatalog catalog,
         ILogger<OrchestratorTool> logger)
@@ -70,11 +73,13 @@ public sealed class OrchestratorTool
 
     [McpServerTool(Name = "route")]
     [Description(
-        "Forward a tool call to a downstream capability and return its result. This is the " +
-        "main dispatch tool: choose the capability and the exact tool name (from " +
-        "'discover_tools'), and pass an 'arguments' object matching that tool's input " +
-        "schema. The orchestrator connects to the capability's MCP server, invokes the " +
-        "tool, and relays the response back to you.")]
+        "PREFERRED dispatch tool. Forward a tool call to a downstream capability and return " +
+        "its result. You choose the capability and the exact tool name (from " +
+        "'discover_tools') and pass an 'arguments' object matching that tool's input schema — " +
+        "you do the interpreting, the orchestrator just couriers the call verbatim and relays " +
+        "the response. This is the reliable path; use it for all real work. Honor the " +
+        "capability's instructions when filling arguments (e.g. always include the Jira issue " +
+        "key).")]
     public static async Task<string> Route(
         IDownstreamConnectionManager connections,
         ICapabilityCatalog catalog,
@@ -103,11 +108,12 @@ public sealed class OrchestratorTool
 
     [McpServerTool(Name = "request")]
     [Description(
-        "Describe in natural language what you need from a capability and let the " +
-        "orchestrator pick the right downstream tool and arguments for you, then call it. " +
-        "Use this when you don't want to inspect the tool list yourself. Example: " +
-        "capability='jira', request='summary and status of ticket PROJ-123'. For full " +
-        "control over tool and arguments, use 'discover_tools' + 'route' instead.")]
+        "BEST-EFFORT CONVENIENCE — prefer 'route'. Describe in natural language what you need " +
+        "and let the orchestrator GUESS the downstream tool and arguments with a simple " +
+        "keyword heuristic (no language understanding). It only works for trivial cases where " +
+        "the tool is obvious and the request literally contains the argument values (e.g. an " +
+        "explicit 'PROJ-123' key); otherwise it will mis-map your text into the wrong field. " +
+        "For anything real, use 'discover_tools' + 'route' and supply the arguments yourself.")]
     public static async Task<string> Request(
         IDownstreamConnectionManager connections,
         IRoutePlanner planner,
