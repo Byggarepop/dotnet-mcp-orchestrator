@@ -42,6 +42,20 @@ public sealed class CapabilityDescriptor
 
     /// <summary>Extra environment variables for the spawned server. Values support <c>${VAR}</c>.</summary>
     public Dictionary<string, string?> Env { get; set; } = new();
+
+    /// <summary>
+    /// Seconds to wait for this downstream server to start and complete the MCP handshake
+    /// before giving up. <c>null</c> uses the orchestrator default. Raise it for slow
+    /// first-launches (e.g. an <c>npx</c> server that downloads its package on first run).
+    /// </summary>
+    public int? ConnectTimeoutSeconds { get; set; }
+
+    /// <summary>
+    /// Seconds to wait for a single tool call or tool-list to return before giving up.
+    /// <c>null</c> uses the orchestrator default. A timeout faults the call but leaves the
+    /// connection cached for the next request.
+    /// </summary>
+    public int? CallTimeoutSeconds { get; set; }
 }
 
 /// <summary>Root of the orchestrator configuration file.</summary>

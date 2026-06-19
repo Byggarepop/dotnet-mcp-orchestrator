@@ -24,4 +24,9 @@
     <Content Include="orchestrator.config.json" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- Expose internal test seams (e.g. CapabilityCatalog.FromDescriptors, ToolPayloads). -->
+    <InternalsVisibleTo Include="McpOrchestrator.Tests" />
+  </ItemGroup>
+
 </Project>

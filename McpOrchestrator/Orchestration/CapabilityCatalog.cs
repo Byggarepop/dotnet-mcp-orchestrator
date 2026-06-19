@@ -24,8 +24,51 @@ public sealed partial class CapabilityCatalog : ICapabilityCatalog
         _byName = capabilities.ToDictionary(c => c.Name, StringComparer.OrdinalIgnoreCase);
     }
 
+    /// <summary>Finds a capability by name (case-insensitive), or <c>null</c> if none matches.</summary>
     public CapabilityDescriptor? Find(string name) =>
         name is not null && _byName.TryGetValue(name, out var d) ? d : null;
+
+    /// <summary>
+    /// Builds a catalog from already-loaded descriptors, applying the same validation as
+    /// <see cref="Load"/>: drops entries that are disabled, unnamed, lack a launch command,
+    /// or duplicate an earlier name (case-insensitive, first one wins). Exposed for tests.
+    /// </summary>
+    internal static CapabilityCatalog FromDescriptors(IEnumerable<CapabilityDescriptor> capabilities, ILogger logger)
+    {
+        var kept = new List<CapabilityDescriptor>();
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var c in capabilities)
+        {
+            if (!c.Enabled)
+            {
+                continue;
+            }
+
+            if (string.IsNullOrWhiteSpace(c.Name))
+            {
+                logger.LogWarning("Skipping a capability with no name.");
+                continue;
+            }
+
+            if (string.IsNullOrWhiteSpace(c.Command))
+            {
+                logger.LogWarning("Skipping capability '{Name}': no launch command configured.", c.Name);
+                continue;
+            }
+
+            if (!seen.Add(c.Name))
+            {
+                logger.LogWarning(
+                    "Duplicate capability name '{Name}' ignored; the first definition wins.", c.Name);
+                continue;
+            }
+
+            kept.Add(c);
+        }
+
+        return new CapabilityCatalog(kept);
+    }
 
     private static readonly JsonSerializerOptions ReadOptions = new()
     {
@@ -77,16 +120,19 @@ public sealed partial class CapabilityCatalog : ICapabilityCatalog
             ["SOLUTION_DIR"] = solutionDir,
         };
 
+        // Resolve ${VAR} tokens first, then validate/dedupe. Disabled entries are skipped
+        // before resolution so their placeholders never need to resolve.
         var resolved = (config?.Capabilities ?? new())
-            .Where(c => c.Enabled && !string.IsNullOrWhiteSpace(c.Name))
-            .Select(c => Resolve(c, tokens, logger))
-            .ToArray();
+            .Where(c => c.Enabled)
+            .Select(c => Resolve(c, tokens, logger));
+
+        var catalog = FromDescriptors(resolved, logger);
 
         logger.LogInformation(
             "Loaded {Count} capability/capabilities from {ConfigPath}: {Names}",
-            resolved.Length, configPath, string.Join(", ", resolved.Select(c => c.Name)));
+            catalog.Capabilities.Count, configPath, string.Join(", ", catalog.Names));
 
-        return new CapabilityCatalog(resolved);
+        return catalog;
     }
 
     private static CapabilityDescriptor Resolve(

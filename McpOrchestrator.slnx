@@ -2,4 +2,5 @@
   <Project Path="McpOrchestrator/McpOrchestrator.csproj" />
   <Project Path="McpOrchestrator.DemoMcp/McpOrchestrator.DemoMcp.csproj" />
   <Project Path="McpOrchestrator.SmokeTest/McpOrchestrator.SmokeTest.csproj" />
+  <Project Path="McpOrchestrator.Tests/McpOrchestrator.Tests.csproj" />
 </Solution>

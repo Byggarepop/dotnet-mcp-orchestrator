@@ -14,6 +14,13 @@ namespace McpOrchestrator.Orchestration;
 /// </summary>
 public sealed class DownstreamConnectionManager : IDownstreamConnectionManager, IAsyncDisposable
 {
+    /// <summary>Default connect deadline when a capability does not override it. Generous so a
+    /// first-run <c>npx</c> download has time to complete.</summary>
+    private const int DefaultConnectTimeoutSeconds = 60;
+
+    /// <summary>Default per-call deadline when a capability does not override it.</summary>
+    private const int DefaultCallTimeoutSeconds = 100;
+
     private readonly ICapabilityCatalog _catalog;
     private readonly ILoggerFactory _loggerFactory;
     private readonly ILogger<DownstreamConnectionManager> _logger;
@@ -35,9 +42,19 @@ public sealed class DownstreamConnectionManager : IDownstreamConnectionManager, 
 
     public async Task<IReadOnlyList<McpClientTool>> ListToolsAsync(string capability, CancellationToken cancellationToken)
     {
-        var client = await GetClientAsync(capability, cancellationToken);
-        var tools = await client.ListToolsAsync(new RequestOptions(), cancellationToken);
-        return tools as IReadOnlyList<McpClientTool> ?? tools.ToList();
+        var descriptor = Resolve(capability);
+        var client = await GetClientAsync(descriptor, cancellationToken);
+
+        using var call = NewCallScope(descriptor, cancellationToken);
+        try
+        {
+            var tools = await client.ListToolsAsync(new RequestOptions(), call.Token);
+            return tools as IReadOnlyList<McpClientTool> ?? tools.ToList();
+        }
+        catch (OperationCanceledException) when (TimedOut(call, cancellationToken))
+        {
+            throw Timeout(descriptor, $"Listing tools for capability '{descriptor.Name}'");
+        }
     }
 
     public async Task<CallToolResult> CallToolAsync(
@@ -46,15 +63,42 @@ public sealed class DownstreamConnectionManager : IDownstreamConnectionManager, 
         IReadOnlyDictionary<string, object?> arguments,
         CancellationToken cancellationToken)
     {
-        var client = await GetClientAsync(capability, cancellationToken);
-        return await client.CallToolAsync(tool, arguments, cancellationToken: cancellationToken);
+        var descriptor = Resolve(capability);
+        var client = await GetClientAsync(descriptor, cancellationToken);
+
+        using var call = NewCallScope(descriptor, cancellationToken);
+        try
+        {
+            return await client.CallToolAsync(tool, arguments, cancellationToken: call.Token);
+        }
+        catch (OperationCanceledException) when (TimedOut(call, cancellationToken))
+        {
+            throw Timeout(descriptor, $"Tool '{tool}' on capability '{descriptor.Name}'");
+        }
     }
 
-    private async Task<McpClient> GetClientAsync(string capability, CancellationToken cancellationToken)
-    {
-        var descriptor = _catalog.Find(capability)
-            ?? throw new CapabilityNotFoundException(capability, _catalog.Names);
+    /// <summary>Resolves a capability name to its descriptor, or throws if it is not in the catalog.</summary>
+    private CapabilityDescriptor Resolve(string capability) =>
+        _catalog.Find(capability) ?? throw new CapabilityNotFoundException(capability, _catalog.Names);
 
+    /// <summary>Creates a per-call cancellation scope that fires after the capability's call timeout.</summary>
+    private static CancellationTokenSource NewCallScope(CapabilityDescriptor descriptor, CancellationToken caller)
+    {
+        var cts = CancellationTokenSource.CreateLinkedTokenSource(caller);
+        cts.CancelAfter(TimeSpan.FromSeconds(descriptor.CallTimeoutSeconds ?? DefaultCallTimeoutSeconds));
+        return cts;
+    }
+
+    /// <summary>True when the call's own deadline fired rather than the caller cancelling.</summary>
+    private static bool TimedOut(CancellationTokenSource call, CancellationToken caller) =>
+        call.IsCancellationRequested && !caller.IsCancellationRequested;
+
+    /// <summary>Builds a descriptive <see cref="TimeoutException"/> for a call that exceeded its deadline.</summary>
+    private static TimeoutException Timeout(CapabilityDescriptor descriptor, string what) =>
+        new($"{what} timed out after {descriptor.CallTimeoutSeconds ?? DefaultCallTimeoutSeconds}s.");
+
+    private async Task<McpClient> GetClientAsync(CapabilityDescriptor descriptor, CancellationToken cancellationToken)
+    {
         var lazy = _clients.GetOrAdd(
             descriptor.Name,
             _ => new Lazy<Task<McpClient>>(() => ConnectAsync(descriptor)));
@@ -96,11 +140,26 @@ public sealed class DownstreamConnectionManager : IDownstreamConnectionManager, 
             },
             _loggerFactory);
 
-        var client = await McpClient.CreateAsync(
-            transport,
-            clientOptions: null,
-            loggerFactory: _loggerFactory,
-            cancellationToken: CancellationToken.None);
+        // The connect runs on its own deadline, independent of any one caller's token, so a
+        // wedged downstream faults (and gets evicted) instead of leaving every caller awaiting
+        // a Lazy<Task> that never completes.
+        var timeoutSeconds = d.ConnectTimeoutSeconds ?? DefaultConnectTimeoutSeconds;
+        using var connectCts = new CancellationTokenSource(TimeSpan.FromSeconds(timeoutSeconds));
+        McpClient client;
+        try
+        {
+            client = await McpClient.CreateAsync(
+                transport,
+                clientOptions: null,
+                loggerFactory: _loggerFactory,
+                cancellationToken: connectCts.Token);
+        }
+        catch (OperationCanceledException) when (connectCts.IsCancellationRequested)
+        {
+            throw new TimeoutException(
+                $"Connecting to capability '{d.Name}' timed out after {timeoutSeconds}s " +
+                $"(command: {d.Command} {string.Join(' ', d.Args)}).");
+        }
 
         _logger.LogInformation("Connected to capability '{Name}'.", d.Name);
         return client;

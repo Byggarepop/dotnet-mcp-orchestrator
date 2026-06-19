@@ -9,6 +9,7 @@ using Microsoft.Extensions.Logging;
 //
 //   dotnet run -- --persona jira       -> exposes get_issue, search_issues
 //   dotnet run -- --persona codegen    -> exposes generate_class
+//   dotnet run -- --persona diag       -> exposes echo, fail, slow (failure-mode testing)
 //   dotnet run                          -> exposes everything (no persona)
 var persona = GetArgValue(args, "--persona") ?? "all";
 
@@ -27,8 +28,11 @@ switch (persona.ToLowerInvariant())
     case "codegen":
         mcp.WithTools<CodegenTools>();
         break;
+    case "diag":
+        mcp.WithTools<DiagnosticsTools>();
+        break;
     default:
-        mcp.WithTools<JiraTools>().WithTools<CodegenTools>();
+        mcp.WithTools<JiraTools>().WithTools<CodegenTools>().WithTools<DiagnosticsTools>();
         break;
 }
 

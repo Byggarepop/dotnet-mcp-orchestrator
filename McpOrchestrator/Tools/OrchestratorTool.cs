@@ -1,7 +1,5 @@
 using System.ComponentModel;
-using System.Text;
 using System.Text.Json;
-using System.Text.Json.Nodes;
 using McpOrchestrator.Orchestration;
 using Microsoft.Extensions.Logging;
 using ModelContextProtocol.Protocol;
@@ -95,7 +93,7 @@ public sealed class OrchestratorTool
         logger.LogInformation("route capability={Capability} tool={Tool}", capability, tool);
         try
         {
-            var args = ToArguments(arguments);
+            var args = ToolPayloads.ParseArguments(arguments);
             var result = await connections.CallToolAsync(capability, tool, args, cancellationToken);
             return OrchestratorJson.Serialize(ToRouteView(capability, tool, args, result, rationale: null));
         }
@@ -149,9 +147,7 @@ public sealed class OrchestratorTool
 
     // ----- helpers -----
 
-    private static readonly IReadOnlyDictionary<string, object?> EmptyArgs =
-        new Dictionary<string, object?>();
-
+    /// <summary>Builds the structured <see cref="RouteView"/> returned by <c>route</c>/<c>request</c>.</summary>
     private static RouteView ToRouteView(
         string capability,
         string tool,
@@ -162,76 +158,17 @@ public sealed class OrchestratorTool
         Capability = capability,
         Tool = tool,
         IsError = result.IsError ?? false,
-        Text = ExtractText(result),
+        Text = ToolPayloads.FlattenText(result),
         Structured = result.StructuredContent,
         Arguments = JsonSerializer.SerializeToNode(args, OrchestratorJson.Options),
         Rationale = rationale,
     };
 
-    /// <summary>Flattens a tool result's text content blocks into a single string.</summary>
-    private static string ExtractText(CallToolResult result)
-    {
-        if (result.Content is null)
-        {
-            return string.Empty;
-        }
-
-        var sb = new StringBuilder();
-        foreach (var block in result.Content)
-        {
-            if (block is TextContentBlock text)
-            {
-                if (sb.Length > 0)
-                {
-                    sb.Append('\n');
-                }
-                sb.Append(text.Text);
-            }
-        }
-        return sb.ToString();
-    }
-
     /// <summary>
-    /// Converts the agent-supplied arguments element into a name→value map for the
-    /// downstream call. Accepts a JSON object directly, and tolerates an object passed as
-    /// a JSON string. Values are cloned so they outlive the source document.
+    /// Serializes any exception into a structured <see cref="ErrorView"/> string so the agent
+    /// always receives parseable JSON instead of a thrown fault. A
+    /// <see cref="CapabilityNotFoundException"/> carries the list of valid names.
     /// </summary>
-    private static IReadOnlyDictionary<string, object?> ToArguments(JsonElement element)
-    {
-        switch (element.ValueKind)
-        {
-            case JsonValueKind.Object:
-                var dict = new Dictionary<string, object?>();
-                foreach (var prop in element.EnumerateObject())
-                {
-                    dict[prop.Name] = prop.Value.Clone();
-                }
-                return dict;
-
-            case JsonValueKind.String:
-                var raw = element.GetString();
-                if (!string.IsNullOrWhiteSpace(raw))
-                {
-                    try
-                    {
-                        using var doc = JsonDocument.Parse(raw);
-                        if (doc.RootElement.ValueKind == JsonValueKind.Object)
-                        {
-                            return ToArguments(doc.RootElement.Clone());
-                        }
-                    }
-                    catch (JsonException)
-                    {
-                        // Not JSON — fall through to empty.
-                    }
-                }
-                return EmptyArgs;
-
-            default:
-                return EmptyArgs;
-        }
-    }
-
     private static string Error(Exception ex, ICapabilityCatalog catalog)
     {
         var available = ex is CapabilityNotFoundException notFound ? notFound.Available : catalog.Names;

@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <IsPackable>false</IsPackable>
+    <AssemblyName>McpOrchestrator.Tests</AssemblyName>
+    <RootNamespace>McpOrchestrator.Tests</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.12.0" />
+    <PackageReference Include="xunit" Version="2.9.2" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- The test project drives the orchestrator's internals directly, and spawns the demo
+         server as a real downstream MCP. DemoMcp is referenced so it is built before tests
+         run; the tests launch its compiled DLL as a separate process. -->
+    <ProjectReference Include="..\McpOrchestrator\McpOrchestrator.csproj" />
+    <ProjectReference Include="..\McpOrchestrator.DemoMcp\McpOrchestrator.DemoMcp.csproj" />
+  </ItemGroup>
+
+</Project>

@@ -13,15 +13,36 @@ namespace McpOrchestrator.Orchestration;
 /// </summary>
 public sealed partial class HeuristicRoutePlanner : IRoutePlanner
 {
+    /// <summary>
+    /// The minimal view of a downstream tool the planner reasons over: its name, optional
+    /// description, and JSON input schema. Decouples the planning logic from
+    /// <see cref="McpClientTool"/> so it can be exercised in isolation.
+    /// </summary>
+    internal readonly record struct ToolSpec(string Name, string? Description, JsonElement InputSchema);
+
+    /// <inheritdoc />
     public Task<RoutePlan?> PlanAsync(
         string capability,
         IReadOnlyList<McpClientTool> tools,
         string request,
         CancellationToken cancellationToken)
     {
+        var specs = tools
+            .Select(t => new ToolSpec(t.Name, t.Description, t.ProtocolTool.InputSchema))
+            .ToList();
+        return Task.FromResult(Plan(specs, request));
+    }
+
+    /// <summary>
+    /// Pure planning core: choose a tool by keyword overlap and fill its arguments. Returns
+    /// <c>null</c> when there are no tools. Separated from <see cref="PlanAsync"/> so it can be
+    /// unit-tested with synthetic <see cref="ToolSpec"/>s.
+    /// </summary>
+    internal static RoutePlan? Plan(IReadOnlyList<ToolSpec> tools, string request)
+    {
         if (tools.Count == 0)
         {
-            return Task.FromResult<RoutePlan?>(null);
+            return null;
         }
 
         var requestWords = Tokenize(request);
@@ -41,10 +62,11 @@ public sealed partial class HeuristicRoutePlanner : IRoutePlanner
         var rationale =
             $"Heuristic: selected '{chosen.Name}' from {tools.Count} tool(s) by keyword overlap. {argNotes}";
 
-        return Task.FromResult<RoutePlan?>(new RoutePlan(chosen.Name, arguments, rationale));
+        return new RoutePlan(chosen.Name, arguments, rationale);
     }
 
-    private static int Score(McpClientTool tool, IReadOnlySet<string> requestWords)
+    /// <summary>Counts how many request words also appear in the tool's name and description.</summary>
+    private static int Score(ToolSpec tool, IReadOnlySet<string> requestWords)
     {
         var haystack = Tokenize($"{tool.Name} {tool.Description}");
         return haystack.Count(requestWords.Contains);
@@ -56,10 +78,10 @@ public sealed partial class HeuristicRoutePlanner : IRoutePlanner
     /// first unfilled string property (required ones first).
     /// </summary>
     private static (IReadOnlyDictionary<string, object?> Arguments, string Notes) BuildArguments(
-        McpClientTool tool, string request)
+        ToolSpec tool, string request)
     {
         var args = new Dictionary<string, object?>();
-        var properties = ReadStringProperties(tool.ProtocolTool.InputSchema, out var required);
+        var properties = ReadStringProperties(tool.InputSchema, out var required);
         if (properties.Count == 0)
         {
             return (args, "Tool takes no (string) arguments; sent an empty argument set.");
