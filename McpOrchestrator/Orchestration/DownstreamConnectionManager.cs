@@ -4,7 +4,7 @@ using ModelContextProtocol;
 using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
 
-namespace ConsafeWorkflow.Mcp.Orchestration;
+namespace McpOrchestrator.Orchestration;
 
 /// <summary>
 /// Default <see cref="IDownstreamConnectionManager"/>. Connects to each downstream MCP

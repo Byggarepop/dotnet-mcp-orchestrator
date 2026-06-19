@@ -3,7 +3,7 @@ using System.Text.Json;
 using System.Text.RegularExpressions;
 using ModelContextProtocol.Client;
 
-namespace ConsafeWorkflow.Mcp.Orchestration;
+namespace McpOrchestrator.Orchestration;
 
 /// <summary>
 /// A dependency-free <see cref="IRoutePlanner"/> that picks a tool by keyword overlap

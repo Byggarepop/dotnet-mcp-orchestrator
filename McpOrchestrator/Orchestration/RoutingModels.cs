@@ -2,7 +2,7 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
 
-namespace ConsafeWorkflow.Mcp.Orchestration;
+namespace McpOrchestrator.Orchestration;
 
 /// <summary>Shared JSON options for the structured strings the orchestrator returns to the agent.</summary>
 public static class OrchestratorJson

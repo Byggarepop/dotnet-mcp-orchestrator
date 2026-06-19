@@ -1,4 +1,4 @@
-# ConsafeWorkflow.Mcp — MCP Orchestrator
+# McpOrchestrator — MCP Orchestrator
 
 An **MCP server that orchestrates other MCP servers.** One agent connects to this single
 server; this server holds the connections to many downstream MCP servers (JIRA, code
@@ -60,7 +60,7 @@ plus the **instructions** the model sees (`summary`/`instructions`):
       "enabled": true,
       "transport": "stdio",
       "command": "dotnet",
-      "args": ["run", "--project", "${SOLUTION_DIR}/ConsafeWorkflow.DemoMcp/ConsafeWorkflow.DemoMcp.csproj", "--no-build", "--", "--persona", "jira"],
+      "args": ["run", "--project", "${SOLUTION_DIR}/McpOrchestrator.DemoMcp/McpOrchestrator.DemoMcp.csproj", "--no-build", "--", "--persona", "jira"],
       "workingDirectory": "${SOLUTION_DIR}"
     }
   ]
@@ -70,7 +70,7 @@ plus the **instructions** the model sees (`summary`/`instructions`):
 - **Tokens:** `${SOLUTION_DIR}` (repo root) and `${CONFIG_DIR}` (this file's folder) are
   built in; any other `${VAR}` resolves from an environment variable.
 - **Transport:** only `stdio` is implemented in this prototype.
-- **Override path:** set `CONSAFE_ORCHESTRATOR_CONFIG` to point at a different config file.
+- **Override path:** set `MCP_ORCHESTRATOR_CONFIG` to point at a different config file.
 
 ### Pointing at a *real* downstream MCP
 
@@ -93,18 +93,18 @@ npm-based one:
 
 This repo has three projects:
 
-- **`ConsafeWorkflow.Mcp`** — the orchestrator (this README).
-- **`ConsafeWorkflow.DemoMcp`** — a sample downstream MCP that role-plays as `jira` or
+- **`McpOrchestrator`** — the orchestrator (this README).
+- **`McpOrchestrator.DemoMcp`** — a sample downstream MCP that role-plays as `jira` or
   `codegen` via `--persona` (so one project stands in for several distinct servers).
-- **`ConsafeWorkflow.SmokeTest`** — a console MCP client that drives the orchestrator
+- **`McpOrchestrator.SmokeTest`** — a console MCP client that drives the orchestrator
   end-to-end (also a usage example).
 
 ```bash
 # build everything once (the IDE registration and config use --no-build)
-dotnet build ConsafeWorkflow.slnx
+dotnet build McpOrchestrator.slnx
 
 # run the end-to-end demo: smoke-test → orchestrator → demo MCP (jira + codegen)
-dotnet run --project ConsafeWorkflow.SmokeTest --no-build
+dotnet run --project McpOrchestrator.SmokeTest --no-build
 ```
 
 The orchestrator speaks **stdio** (JSON-RPC). All logging goes to **stderr**; stdout is
@@ -112,15 +112,27 @@ reserved for the MCP protocol.
 
 ## IDE integration
 
-The orchestrator is registered for Visual Studio / VS Code as the stdio server
-**`consafeworkflow`** in [`.mcp.json`](../.mcp.json) and
-[`.vscode/mcp.json`](../.vscode/mcp.json) (it launches `ConsafeWorkflow.Mcp.csproj` with
-`--no-build`, so build once first). Reference its tools from an agent as `consafeworkflow/*`
-— see [`.github/agents/ConsafeWorkflow-Example.agent.md`](../.github/agents/ConsafeWorkflow-Example.agent.md).
-Rename the server id to `orchestrator` in those files if you prefer (keep the agent's
-`tools:` line in sync).
+Register the orchestrator for Visual Studio / VS Code as a stdio server in
+[`.mcp.json`](../.mcp.json) and [`.vscode/mcp.json`](../.vscode/mcp.json). These two files
+must be set (by hand) to the server id `orchestrator` and the renamed project path — build
+once first because of `--no-build`:
 
-> Open **`ConsafeWorkflow.slnx`** (or the repo root), not a bare `.csproj`, so the IDE
+```json
+{
+  "servers": {
+    "orchestrator": {
+      "type": "stdio",
+      "command": "dotnet",
+      "args": ["run", "--project", "${workspaceFolder}/McpOrchestrator/McpOrchestrator.csproj", "--no-build"]
+    }
+  }
+}
+```
+
+Reference its tools from an agent as `orchestrator/*` — see
+[`.github/agents/McpOrchestrator-Example.agent.md`](../.github/agents/McpOrchestrator-Example.agent.md).
+
+> Open **`McpOrchestrator.slnx`** (or the repo root), not a bare `.csproj`, so the IDE
 > discovers the repo-root MCP config. Stop the IDE's server before rebuilding (it locks the
 > output exe).
 
@@ -138,7 +150,7 @@ Rename the server id to `orchestrator` in those files if you prefer (keep the ag
 ## Project layout
 
 ```
-ConsafeWorkflow.Mcp/
+McpOrchestrator/
   Program.cs                              Host + MCP stdio server wiring (DI of the services below)
   orchestrator.config.json               The downstream catalog (connections + instructions)
   Tools/OrchestratorTool.cs              The 4 meta-tools: list_capabilities/discover_tools/route/request
@@ -156,6 +168,6 @@ ConsafeWorkflow.Mcp/
 ## Debugging
 
 The server is launched by the IDE's MCP host, so debug it by **attaching to the spawned
-process** (named `ConsafeWorkflow.Mcp`). A startup gate pauses until a debugger attaches:
-set `CONSAFEWORKFLOW_DEBUG=launch` (Visual Studio JIT picker) or `=1` (manual attach) in the
+process** (named `McpOrchestrator`). A startup gate pauses until a debugger attaches:
+set `MCP_ORCHESTRATOR_DEBUG=launch` (Visual Studio JIT picker) or `=1` (manual attach) in the
 server's `env` block. The PID is logged to stderr on startup. Remove the env var when done.

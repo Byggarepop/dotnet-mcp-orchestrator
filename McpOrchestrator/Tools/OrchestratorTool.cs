@@ -2,12 +2,12 @@ using System.ComponentModel;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
-using ConsafeWorkflow.Mcp.Orchestration;
+using McpOrchestrator.Orchestration;
 using Microsoft.Extensions.Logging;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 
-namespace ConsafeWorkflow.Mcp.Tools;
+namespace McpOrchestrator.Tools;
 
 /// <summary>
 /// The orchestrator's MCP tool surface — the only tools the single agent sees. Together

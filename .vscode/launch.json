@@ -3,9 +3,9 @@
   "configurations": [
     {
       // Attach to the running MCP server (launched by the IDE's MCP host).
-      // Start the agent with CONSAFEWORKFLOW_DEBUG=1 (see README), then run this
-      // and pick the "ConsafeWorkflow.Mcp" process.
-      "name": "Attach to ConsafeWorkflow.Mcp",
+      // Start the agent with MCP_ORCHESTRATOR_DEBUG=1 (see README), then run this
+      // and pick the "McpOrchestrator" process.
+      "name": "Attach to McpOrchestrator",
       "type": "coreclr",
       "request": "attach",
       "processId": "${command:pickProcess}"

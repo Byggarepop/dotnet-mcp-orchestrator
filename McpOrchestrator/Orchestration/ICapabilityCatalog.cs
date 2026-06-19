@@ -1,4 +1,4 @@
-namespace ConsafeWorkflow.Mcp.Orchestration;
+namespace McpOrchestrator.Orchestration;
 
 /// <summary>
 /// The set of downstream MCP capabilities the orchestrator knows about, loaded from

@@ -2,7 +2,7 @@ using System.ComponentModel;
 using System.Text;
 using ModelContextProtocol.Server;
 
-namespace ConsafeWorkflow.DemoMcp;
+namespace McpOrchestrator.DemoMcp;
 
 /// <summary>
 /// Stand-in for a code-generation MCP server. Generates a trivial C# class from a name

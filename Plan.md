@@ -1,4 +1,4 @@
-# Plan: ConsafeWorkflow.Mcp — MCP Orchestrator
+# Plan: McpOrchestrator — MCP Orchestrator
 
 ## Goal
 
@@ -24,7 +24,7 @@ downstream servers).
 
 Pivoted from the previous "stateful workflow engine" design (preserved on the
 `archive/workflow-shell` git branch). The orchestrator prototype is built and verified
-end-to-end by `ConsafeWorkflow.SmokeTest`:
+end-to-end by `McpOrchestrator.SmokeTest`:
 
 - `list_capabilities` advertises `jira` + `codegen` from `orchestrator.config.json`.
 - `discover_tools` connects to a downstream MCP and relays its tool schemas.
@@ -56,9 +56,9 @@ end-to-end by `ConsafeWorkflow.SmokeTest`:
 
 ## Projects
 
-- `ConsafeWorkflow.Mcp` — the orchestrator.
-- `ConsafeWorkflow.DemoMcp` — sample downstream MCP; `--persona jira|codegen` selects toolset.
-- `ConsafeWorkflow.SmokeTest` — console MCP client that drives the orchestrator end-to-end.
+- `McpOrchestrator` — the orchestrator.
+- `McpOrchestrator.DemoMcp` — sample downstream MCP; `--persona jira|codegen` selects toolset.
+- `McpOrchestrator.SmokeTest` — console MCP client that drives the orchestrator end-to-end.
 
 ## Next steps
 

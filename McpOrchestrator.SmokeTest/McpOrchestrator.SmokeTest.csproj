@@ -5,8 +5,8 @@
     <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
-    <RootNamespace>ConsafeWorkflow.SmokeTest</RootNamespace>
-    <AssemblyName>ConsafeWorkflow.SmokeTest</AssemblyName>
+    <RootNamespace>McpOrchestrator.SmokeTest</RootNamespace>
+    <AssemblyName>McpOrchestrator.SmokeTest</AssemblyName>
   </PropertyGroup>
 
   <ItemGroup>

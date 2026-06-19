@@ -1,4 +1,4 @@
-namespace ConsafeWorkflow.Mcp.Orchestration;
+namespace McpOrchestrator.Orchestration;
 
 /// <summary>
 /// One downstream MCP server the orchestrator can route to — a single "capability"

@@ -1,12 +1,12 @@
 {
   "profiles": {
-    "ConsafeWorkflow.Mcp": {
+    "McpOrchestrator": {
       "commandName": "Project"
     },
-    "ConsafeWorkflow.Mcp (wait for debugger)": {
+    "McpOrchestrator (wait for debugger)": {
       "commandName": "Project",
       "environmentVariables": {
-        "CONSAFEWORKFLOW_DEBUG": "1"
+        "MCP_ORCHESTRATOR_DEBUG": "1"
       }
     }
   }

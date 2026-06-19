@@ -2,7 +2,7 @@ using System.Text.Json;
 using System.Text.RegularExpressions;
 using Microsoft.Extensions.Logging;
 
-namespace ConsafeWorkflow.Mcp.Orchestration;
+namespace McpOrchestrator.Orchestration;
 
 /// <summary>
 /// Loads the downstream capability catalog from a JSON config file and resolves
@@ -35,7 +35,7 @@ public sealed partial class CapabilityCatalog : ICapabilityCatalog
     };
 
     /// <summary>
-    /// Loads the catalog. The config path comes from <c>CONSAFE_ORCHESTRATOR_CONFIG</c>
+    /// Loads the catalog. The config path comes from <c>MCP_ORCHESTRATOR_CONFIG</c>
     /// if set, otherwise <c>orchestrator.config.json</c> in <paramref name="contentRoot"/>.
     /// A missing file yields an empty (but valid) catalog so the server still starts.
     /// </summary>
@@ -45,16 +45,16 @@ public sealed partial class CapabilityCatalog : ICapabilityCatalog
         // Anchor on the solution dir (found by walking up for the .slnx), not the current
         // directory — under `dotnet run` the cwd is the caller's, not the project's.
         var solutionDir =
-            FindAncestorContaining("ConsafeWorkflow.slnx", AppContext.BaseDirectory)
-            ?? FindAncestorContaining("ConsafeWorkflow.slnx", contentRoot)
+            FindAncestorContaining("McpOrchestrator.slnx", AppContext.BaseDirectory)
+            ?? FindAncestorContaining("McpOrchestrator.slnx", contentRoot)
             ?? contentRoot;
 
         var configPath = ResolveConfigPath(contentRoot, solutionDir);
         if (configPath is null)
         {
             logger.LogWarning(
-                "Orchestrator config not found (searched CONSAFE_ORCHESTRATOR_CONFIG, " +
-                "{Sln}/ConsafeWorkflow.Mcp, {Base}, {Root}). Starting with no capabilities.",
+                "Orchestrator config not found (searched MCP_ORCHESTRATOR_CONFIG, " +
+                "{Sln}/McpOrchestrator, {Base}, {Root}). Starting with no capabilities.",
                 solutionDir, AppContext.BaseDirectory, contentRoot);
             return new CapabilityCatalog(Array.Empty<CapabilityDescriptor>());
         }
@@ -102,7 +102,7 @@ public sealed partial class CapabilityCatalog : ICapabilityCatalog
     }
 
     /// <summary>
-    /// Picks the first existing config from: the <c>CONSAFE_ORCHESTRATOR_CONFIG</c>
+    /// Picks the first existing config from: the <c>MCP_ORCHESTRATOR_CONFIG</c>
     /// override, the in-repo source file, the copy next to the assembly, then the content
     /// root. Returns <c>null</c> if none exist.
     /// </summary>
@@ -110,8 +110,8 @@ public sealed partial class CapabilityCatalog : ICapabilityCatalog
     {
         string?[] candidates =
         {
-            Environment.GetEnvironmentVariable("CONSAFE_ORCHESTRATOR_CONFIG"),
-            Path.Combine(solutionDir, "ConsafeWorkflow.Mcp", "orchestrator.config.json"),
+            Environment.GetEnvironmentVariable("MCP_ORCHESTRATOR_CONFIG"),
+            Path.Combine(solutionDir, "McpOrchestrator", "orchestrator.config.json"),
             Path.Combine(AppContext.BaseDirectory, "orchestrator.config.json"),
             Path.Combine(contentRoot, "orchestrator.config.json"),
         };

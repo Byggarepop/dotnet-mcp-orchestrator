@@ -1,7 +1,7 @@
 using System.ComponentModel;
 using ModelContextProtocol.Server;
 
-namespace ConsafeWorkflow.DemoMcp;
+namespace McpOrchestrator.DemoMcp;
 
 /// <summary>
 /// Stand-in for a JIRA MCP server. Returns canned data so the orchestrator demo runs

@@ -1,5 +1,0 @@
-<Solution>
-  <Project Path="ConsafeWorkflow.Mcp/ConsafeWorkflow.Mcp.csproj" />
-  <Project Path="ConsafeWorkflow.DemoMcp/ConsafeWorkflow.DemoMcp.csproj" />
-  <Project Path="ConsafeWorkflow.SmokeTest/ConsafeWorkflow.SmokeTest.csproj" />
-</Solution>

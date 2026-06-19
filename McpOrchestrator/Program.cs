@@ -1,22 +1,22 @@
 using System.Diagnostics;
-using ConsafeWorkflow.Mcp.Orchestration;
+using McpOrchestrator.Orchestration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 
 // Optional debug gate. The IDE launches this server as a child process, so the way to
-// debug it is to attach to the spawned process (named "ConsafeWorkflow.Mcp"). This gate
+// debug it is to attach to the spawned process (named "McpOrchestrator"). This gate
 // pauses startup until a debugger attaches, so breakpoints in the tools/orchestration
 // bind before any request is handled. Never write gate output to stdout — that channel is
 // reserved for the MCP protocol.
-//   CONSAFEWORKFLOW_DEBUG=launch  -> Visual Studio: opens the Just-In-Time debugger picker.
-//   CONSAFEWORKFLOW_DEBUG=1       -> Wait for a manual attach (VS Code / Debug > Attach).
-var debugMode = Environment.GetEnvironmentVariable("CONSAFEWORKFLOW_DEBUG");
+//   MCP_ORCHESTRATOR_DEBUG=launch  -> Visual Studio: opens the Just-In-Time debugger picker.
+//   MCP_ORCHESTRATOR_DEBUG=1       -> Wait for a manual attach (VS Code / Debug > Attach).
+var debugMode = Environment.GetEnvironmentVariable("MCP_ORCHESTRATOR_DEBUG");
 if (debugMode is "1" or "true" or "launch")
 {
     Console.Error.WriteLine(
-        $"[ConsafeWorkflow.Mcp] CONSAFEWORKFLOW_DEBUG={debugMode} — waiting for debugger to " +
-        $"attach (process 'ConsafeWorkflow.Mcp', PID {Environment.ProcessId})...");
+        $"[McpOrchestrator] MCP_ORCHESTRATOR_DEBUG={debugMode} — waiting for debugger to " +
+        $"attach (process 'McpOrchestrator', PID {Environment.ProcessId})...");
 
     if (debugMode == "launch" && !Debugger.IsAttached)
     {
@@ -28,7 +28,7 @@ if (debugMode is "1" or "true" or "launch")
         Thread.Sleep(200);
     }
 
-    Console.Error.WriteLine("[ConsafeWorkflow.Mcp] Debugger attached.");
+    Console.Error.WriteLine("[McpOrchestrator] Debugger attached.");
     Debugger.Break();
 }
 

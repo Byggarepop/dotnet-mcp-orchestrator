@@ -1,7 +1,7 @@
 using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
 
-namespace ConsafeWorkflow.Mcp.Orchestration;
+namespace McpOrchestrator.Orchestration;
 
 /// <summary>
 /// Manages live connections to downstream MCP servers. The orchestrator acts as an MCP

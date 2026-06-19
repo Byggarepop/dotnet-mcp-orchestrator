@@ -5,8 +5,8 @@
     <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
-    <RootNamespace>ConsafeWorkflow.Mcp</RootNamespace>
-    <AssemblyName>ConsafeWorkflow.Mcp</AssemblyName>
+    <RootNamespace>McpOrchestrator</RootNamespace>
+    <AssemblyName>McpOrchestrator</AssemblyName>
   </PropertyGroup>
 
   <ItemGroup>

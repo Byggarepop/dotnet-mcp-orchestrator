@@ -7,12 +7,12 @@ using ModelContextProtocol.Protocol;
 // it launches the orchestrator over stdio (exactly as an agent's MCP host would) and calls
 // its meta-tools. The orchestrator in turn connects to the downstream demo MCP servers.
 //
-//   smoke-test  ->  ConsafeWorkflow.Mcp (orchestrator)  ->  ConsafeWorkflow.DemoMcp (jira / codegen)
+//   smoke-test  ->  McpOrchestrator (orchestrator)  ->  McpOrchestrator.DemoMcp (jira / codegen)
 //
-// Run after building the solution:  dotnet run --project ConsafeWorkflow.SmokeTest --no-build
+// Run after building the solution:  dotnet run --project McpOrchestrator.SmokeTest --no-build
 
 var solutionDir = FindSolutionDir();
-var orchestratorProject = Path.Combine(solutionDir, "ConsafeWorkflow.Mcp", "ConsafeWorkflow.Mcp.csproj");
+var orchestratorProject = Path.Combine(solutionDir, "McpOrchestrator", "McpOrchestrator.csproj");
 Console.WriteLine($"Solution dir : {solutionDir}");
 Console.WriteLine($"Orchestrator : {orchestratorProject}");
 
@@ -78,7 +78,7 @@ static async Task CallAsync(McpClient client, string tool, Dictionary<string, ob
 static string FindSolutionDir()
 {
     var dir = new DirectoryInfo(AppContext.BaseDirectory);
-    while (dir is not null && !File.Exists(Path.Combine(dir.FullName, "ConsafeWorkflow.slnx")))
+    while (dir is not null && !File.Exists(Path.Combine(dir.FullName, "McpOrchestrator.slnx")))
     {
         dir = dir.Parent;
     }

@@ -1,6 +1,6 @@
 using ModelContextProtocol.Client;
 
-namespace ConsafeWorkflow.Mcp.Orchestration;
+namespace McpOrchestrator.Orchestration;
 
 /// <summary>
 /// Turns a natural-language need ("get the status of PROJ-123") into a concrete

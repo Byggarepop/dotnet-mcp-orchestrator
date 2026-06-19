@@ -2,7 +2,7 @@
   "//": "Downstream MCP catalog for the orchestrator. Each capability is one MCP server.",
   "//launch": "command/args/workingDirectory say HOW to connect; summary/instructions tell the model WHEN to use it.",
   "//tokens": "${SOLUTION_DIR} = repo root, ${CONFIG_DIR} = this file's folder; any other ${VAR} resolves from environment.",
-  "//override": "Point CONSAFE_ORCHESTRATOR_CONFIG at a different file to swap this catalog.",
+  "//override": "Point MCP_ORCHESTRATOR_CONFIG at a different file to swap this catalog.",
   "capabilities": [
     {
       "name": "jira",
@@ -14,7 +14,7 @@
       "args": [
         "run",
         "--project",
-        "${SOLUTION_DIR}/ConsafeWorkflow.DemoMcp/ConsafeWorkflow.DemoMcp.csproj",
+        "${SOLUTION_DIR}/McpOrchestrator.DemoMcp/McpOrchestrator.DemoMcp.csproj",
         "--no-build",
         "--",
         "--persona",
@@ -32,7 +32,7 @@
       "args": [
         "run",
         "--project",
-        "${SOLUTION_DIR}/ConsafeWorkflow.DemoMcp/ConsafeWorkflow.DemoMcp.csproj",
+        "${SOLUTION_DIR}/McpOrchestrator.DemoMcp/McpOrchestrator.DemoMcp.csproj",
         "--no-build",
         "--",
         "--persona",

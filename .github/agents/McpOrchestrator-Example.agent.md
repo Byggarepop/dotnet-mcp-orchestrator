@@ -1,13 +1,14 @@
 ---
 name: Orchestrator-Agent
-description: "One agent that reaches many MCP servers through the ConsafeWorkflow orchestrator."
+description: "One agent that reaches many MCP servers through the McpOrchestrator orchestrator."
 model: claude-haiku-4.5
-tools: [ 'consafeworkflow/*' ]
+tools: [ 'orchestrator/*' ]
 ---
 
-> The orchestrator MCP server is registered as **`consafeworkflow`** (see `.mcp.json` /
-> `.vscode/mcp.json`), so its tools are referenced as `consafeworkflow/*`. Rename the server
-> id to `orchestrator` in those files if you prefer — just keep this `tools:` line in sync.
+> This agent references the orchestrator MCP server as `orchestrator/*`. Ensure the server is
+> registered with the id **`orchestrator`** in `.mcp.json` / `.vscode/mcp.json`, pointing at
+> `McpOrchestrator/McpOrchestrator.csproj` (see the project README for the exact JSON). Keep
+> this `tools:` line in sync with that id.
 
 ## Role
 
