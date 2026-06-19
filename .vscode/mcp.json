@@ -1,12 +1,12 @@
 {
   "servers": {
-    "consafeworkflow": {
+    "orchestrator": {
       "type": "stdio",
       "command": "dotnet",
       "args": [
         "run",
         "--project",
-        "${workspaceFolder}/ConsafeWorkflow.Mcp/ConsafeWorkflow.Mcp.csproj",
+        "${workspaceFolder}/McpOrchestrator/McpOrchestrator.csproj",
         "--no-build"
       ]
     }

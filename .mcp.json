@@ -1,17 +1,14 @@
 {
   "servers": {
-    "consafeworkflow": {
+    "orchestrator": {
       "type": "stdio",
       "command": "dotnet",
       "args": [
         "run",
         "--project",
-        "C:/Users/sebas/Projects/MCP/ConsafeWorkflow.Mcp/ConsafeWorkflow.Mcp.csproj",
+        "C:/Users/sebas/Projects/MCP/McpOrchestrator/McpOrchestrator.csproj",
         "--no-build"
-      ],
-      "env": {
-        "CONSAFEWORKFLOW_DISABLE_ELICITATION": "0"
-      }
+      ]
     }
   }
 }
