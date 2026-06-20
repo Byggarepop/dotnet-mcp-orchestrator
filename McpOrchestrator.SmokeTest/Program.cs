@@ -21,11 +21,17 @@ Console.WriteLine($"Orchestrator : {orchestratorProject}");
 // the default path) — real users set MCP_ORCHESTRATOR_CONFIG to their own file the same way.
 var sampleConfig = Path.Combine(solutionDir, "McpOrchestrator", "orchestrator.config.sample.json");
 
+// By default the demo runs the orchestrator via `dotnet run`. Set MCP_ORCHESTRATOR_COMMAND to a
+// prebuilt orchestrator binary (e.g. a Native-AOT publish) to drive that instead.
+var exeOverride = Environment.GetEnvironmentVariable("MCP_ORCHESTRATOR_COMMAND");
+
 var transport = new StdioClientTransport(new StdioClientTransportOptions
 {
     Name = "orchestrator",
-    Command = "dotnet",
-    Arguments = ["run", "--project", orchestratorProject, "--no-build"],
+    Command = exeOverride ?? "dotnet",
+    Arguments = exeOverride is null
+        ? new[] { "run", "--project", orchestratorProject, "--no-build" }
+        : Array.Empty<string>(),
     WorkingDirectory = solutionDir,
     EnvironmentVariables = new Dictionary<string, string?> { ["MCP_ORCHESTRATOR_CONFIG"] = sampleConfig },
 });
