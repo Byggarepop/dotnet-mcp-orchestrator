@@ -30,5 +30,8 @@ dotnet test McpOrchestrator.slnx                               # run the test su
 `list_capabilities` → `discover_tools` → **`route`** (preferred: you pick the tool and fill the
 arguments) — with `request` as a best-effort natural-language fallback. The orchestrator is a
 **courier, not an interpreter**: it forwards exactly what the agent sends, so each capability's
-config `instructions` spell out precisely what to pass. See the
-[full docs](McpOrchestrator/README.md) for details.
+config `instructions` spell out precisely what to pass.
+
+An **optional embedded local LLM** (opt-in via `MCP_ORCHESTRATOR_PLANNER=llm`) makes `request`
+reliable — a tiny model runs in-process on CPU with grammar-constrained decoding, downloaded once
+on first use. See the [full docs](McpOrchestrator/README.md) for details.

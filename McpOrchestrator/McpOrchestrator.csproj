@@ -16,6 +16,12 @@
     <PackageReference Include="ModelContextProtocol" Version="1.4.0" />
     <PackageReference Include="ModelContextProtocol.Core" Version="1.4.0" />
     <PackageReference Include="Microsoft.Extensions.Hosting" Version="9.0.0" />
+    <!-- Optional embedded local LLM for the 'request' route planner (opt-in via config).
+         LLamaSharp runs a small GGUF model in-process on CPU; the Backend.Cpu package carries
+         the native llama.cpp libraries. The model weights are downloaded on first use, not
+         shipped here (see Orchestration/LocalLlm/ModelProvisioner). -->
+    <PackageReference Include="LLamaSharp" Version="0.27.0" />
+    <PackageReference Include="LLamaSharp.Backend.Cpu" Version="0.27.0" />
   </ItemGroup>
 
   <ItemGroup>

@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using McpOrchestrator.Orchestration;
+using McpOrchestrator.Orchestration.LocalLlm;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
@@ -50,7 +51,35 @@ builder.Services.AddSingleton<ICapabilityCatalog>(sp =>
         contentRoot,
         sp.GetRequiredService<ILoggerFactory>().CreateLogger<CapabilityCatalog>()));
 builder.Services.AddSingleton<IDownstreamConnectionManager, DownstreamConnectionManager>();
-builder.Services.AddSingleton<IRoutePlanner, HeuristicRoutePlanner>();
+
+// Route planner for the `request` tool. Default: the dependency-free heuristic. Opt in to the
+// embedded local LLM with MCP_ORCHESTRATOR_PLANNER=llm — it is always wrapped with the heuristic
+// as a fallback, and the (small) model is downloaded lazily on the first `request` call, so
+// startup stays fast and offline-friendly.
+var llmOptions = LocalLlmOptions.FromEnvironment();
+builder.Services.AddSingleton<HeuristicRoutePlanner>();
+if (llmOptions.Enabled)
+{
+    builder.Services.AddSingleton(llmOptions);
+    builder.Services.AddSingleton<ModelProvisioner>(sp => new ModelProvisioner(
+        sp.GetRequiredService<LocalLlmOptions>(),
+        sp.GetRequiredService<ILoggerFactory>().CreateLogger<ModelProvisioner>()));
+    builder.Services.AddSingleton<LocalLlm>(sp => new LocalLlm(
+        sp.GetRequiredService<LocalLlmOptions>(),
+        sp.GetRequiredService<ModelProvisioner>(),
+        sp.GetRequiredService<ILoggerFactory>().CreateLogger<LocalLlm>()));
+    builder.Services.AddSingleton<IRoutePlanner>(sp => new FallbackRoutePlanner(
+        new LlmRoutePlanner(
+            sp.GetRequiredService<LocalLlm>(),
+            sp.GetRequiredService<ILogger<LlmRoutePlanner>>(),
+            llmOptions.ModelFileName),
+        sp.GetRequiredService<HeuristicRoutePlanner>(),
+        sp.GetRequiredService<ILogger<FallbackRoutePlanner>>()));
+}
+else
+{
+    builder.Services.AddSingleton<IRoutePlanner>(sp => sp.GetRequiredService<HeuristicRoutePlanner>());
+}
 
 builder.Services
     .AddMcpServer()

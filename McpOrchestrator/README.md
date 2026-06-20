@@ -31,13 +31,14 @@ The orchestrator is therefore both:
 4. [Build & run the demo](#build--run-the-demo)
 5. [Register the orchestrator with an agent](#register-the-orchestrator-with-an-agent)
 6. [Add a new downstream MCP](#add-a-new-downstream-mcp)
-7. [Configuration reference](#configuration-reference)
-8. [Testing](#testing)
-9. [Troubleshooting & pitfalls](#troubleshooting--pitfalls)
-10. [Security](#security)
-11. [Extending](#extending)
-12. [Project layout](#project-layout)
-13. [Debugging](#debugging)
+7. [Optional: a local LLM for `request`](#optional-a-local-llm-for-request)
+8. [Configuration reference](#configuration-reference)
+9. [Testing](#testing)
+10. [Troubleshooting & pitfalls](#troubleshooting--pitfalls)
+11. [Security](#security)
+12. [Extending](#extending)
+13. [Project layout](#project-layout)
+14. [Debugging](#debugging)
 
 ---
 
@@ -91,6 +92,10 @@ reliable pattern is `discover_tools` + `route`, with the model filling the argum
 capability's instructions. Treat `request` as a shortcut for trivial cases only. (This weakness
 is pinned down by a characterization test in the test suite.)
 
+You can make `request` genuinely smart by enabling the **optional embedded local LLM** — a small
+model that runs in-process and turns the sentence into a real tool call. See
+[Optional: a local LLM for `request`](#optional-a-local-llm-for-request).
+
 ---
 
 ## Prerequisites
@@ -98,6 +103,8 @@ is pinned down by a characterization test in the test suite.)
 - **.NET SDK 10** (`dotnet --version` ≥ `10.0.300`).
 - **Node.js / npx** — only if you point a capability at an npm-based MCP server (e.g. the
   filesystem reference server). `node` ≥ 18.
+- **Internet on first run** — only if you enable the optional
+  [local LLM planner](#optional-a-local-llm-for-request) (it downloads a model once).
 - The repo ships a local [`NuGet.config`](../NuGet.config) that restores from nuget.org alone,
   so a clean `dotnet build` works without any machine-level feed.
 
@@ -228,6 +235,53 @@ To **temporarily disable** a capability without deleting it, set `"enabled": fal
 
 ---
 
+## Optional: a local LLM for `request`
+
+The `request` tool's default planner is a keyword heuristic with no language understanding. You
+can replace it with a **small LLM that runs in-process** (no external server, no GPU) so
+`request` reliably turns a sentence into the right tool call. It is **opt-in** and the base server
+works without it.
+
+**Enable it** by setting an environment variable on the server and restarting:
+
+```jsonc
+// in the server's env block (.mcp.json / .vscode/mcp.json), or your shell
+"env": { "MCP_ORCHESTRATOR_PLANNER": "llm" }
+```
+
+**What happens:**
+
+- On the **first `request` call**, the model is **downloaded once** (~400 MB) into
+  `%LOCALAPPDATA%/McpOrchestrator/models/` and reused thereafter. Startup is unaffected — the
+  download is lazy, not at boot.
+- The default model is **Qwen2.5-0.5B-Instruct (Q4_K_M)** — chosen to run on modest CPUs (~0.5–1 GB
+  RAM). Routing a request takes roughly **1–4 s** on CPU after the model is loaded.
+- Routing is **grammar-constrained**: the model is physically restricted to emit one of the real
+  tool names, then a JSON object using only that tool's schema keys. This is what makes a sub-1B
+  model dependable here.
+- If the model is unavailable (not yet downloaded, offline, load error) the planner **falls back
+  to the heuristic automatically**, so `request` never hard-fails.
+
+**Tuning** (all optional environment variables):
+
+| Variable | Default | Meaning |
+| --- | --- | --- |
+| `MCP_ORCHESTRATOR_PLANNER` | `heuristic` | Set to `llm` to enable the local model. |
+| `MCP_ORCHESTRATOR_LLM_MODEL` | _(unset)_ | Path to a GGUF you already have — skips the download. |
+| `MCP_ORCHESTRATOR_LLM_URL` | Qwen2.5-0.5B Q4 | Download URL for the model (to choose a different one, e.g. a 1.5B). |
+| `MCP_ORCHESTRATOR_LLM_CACHE` | `%LOCALAPPDATA%/McpOrchestrator/models` | Where the model is cached. |
+| `MCP_ORCHESTRATOR_LLM_THREADS` | auto | CPU threads for inference. |
+
+> A bigger model (e.g. Qwen2.5-1.5B) is noticeably better at argument extraction but ~2–4× slower
+> on CPU. Point `MCP_ORCHESTRATOR_LLM_URL`/`MCP_ORCHESTRATOR_LLM_MODEL` at it to switch. For the
+> most reliable results, prefer `route` regardless — the local LLM only improves the `request`
+> convenience path.
+
+The embedded runtime is **LLamaSharp** (llama.cpp); its CPU backend ships with the server, but the
+model weights do not (they're downloaded on first use).
+
+---
+
 ## Configuration reference
 
 Each entry in `capabilities` is one downstream MCP server.
@@ -285,6 +339,14 @@ The `McpOrchestrator.Tests` project (xUnit) has 37 tests:
 Integration tests launch the compiled `McpOrchestrator.DemoMcp.dll` directly, so build the
 solution first (the test project references it, so a normal `dotnet test` does this for you).
 
+The local-LLM planner's deterministic parts (grammar generation, the two-step planning core with
+a fake completer, and the fallback decorator) are unit-tested without a model. A **live** test that
+downloads the real model and runs inference is gated behind an env flag so normal runs stay fast:
+
+```bash
+RUN_LLM_LIVE=1 dotnet test --filter FullyQualifiedName~LiveLocalLlmTests
+```
+
 ---
 
 ## Troubleshooting & pitfalls
@@ -314,10 +376,11 @@ which environment secrets) you expose to a downstream process. Downstream tool *
 
 ## Extending
 
-- **Real routing intelligence** — `request` selects a tool via `IRoutePlanner`. The shipped
-  `HeuristicRoutePlanner` is dependency-free keyword matching; swap in an LLM-backed planner
-  (e.g. a local Ollama / LM Studio model) for production-quality selection. The planner's core is
-  isolated behind `HeuristicRoutePlanner.ToolSpec`, so an alternative is easy to slot in.
+- **Real routing intelligence** — `request` selects a tool via `IRoutePlanner`. Two implementations
+  ship: the dependency-free `HeuristicRoutePlanner`, and the opt-in `LlmRoutePlanner` (embedded
+  local LLM, see [above](#optional-a-local-llm-for-request)), composed behind `FallbackRoutePlanner`.
+  The planner core is isolated behind a `ToolSpec`, so further alternatives (e.g. a cloud model or
+  a local Ollama endpoint) are easy to slot in.
 - **More transports** — `DownstreamConnectionManager` implements only `stdio`; add HTTP/SSE
   (the SDK ships an HTTP client transport) by branching on `descriptor.Transport`.
 - **Connection lifecycle** — lazy connect, per-capability cache, fault eviction, and timeouts are
@@ -340,8 +403,15 @@ McpOrchestrator/
     DownstreamConnectionManager.cs       MCP client: lazy connect, cache, timeouts, proxy, dispose
     IRoutePlanner.cs                     NL request → (tool, arguments) seam (RoutePlan)
     HeuristicRoutePlanner.cs             Dependency-free planner (keyword match + arg extraction)
+    FallbackRoutePlanner.cs              Decorator: try primary planner, fall back to the heuristic
     ToolPayloads.cs                      Pure argument/result conversions (unit-tested)
     RoutingModels.cs                     DTOs returned to the agent (+ JSON options)
+    LocalLlm/                            Optional embedded local-LLM planner (opt-in)
+      LocalLlmOptions.cs                 Env-bound options (model, cache, threads, …)
+      ModelProvisioner.cs                Resolve/download the GGUF model (atomic, cached)
+      GbnfGrammar.cs                     Grammars constraining output to tool names / schema keys
+      LocalLlm.cs                        Lazy llama.cpp load + grammar-constrained completion
+      LlmRoutePlanner.cs                 Two-step constrained planning (select tool, extract args)
 
 McpOrchestrator.DemoMcp/                 Sample downstream MCP (personas: jira / codegen / diag)
 McpOrchestrator.SmokeTest/               Console MCP client that drives the orchestrator
