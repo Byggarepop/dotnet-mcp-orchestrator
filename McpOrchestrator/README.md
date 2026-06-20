@@ -41,18 +41,19 @@ The orchestrator is therefore both:
 1. [How it works](#how-it-works)
 2. [The four tools](#the-four-tools-agent-facing-surface)
 3. [Token scaling](#token-scaling)
-4. [Prerequisites](#prerequisites)
-5. [Build & run the demo](#build--run-the-demo)
-6. [Register the orchestrator with an agent](#register-the-orchestrator-with-an-agent)
-7. [Add a new downstream MCP](#add-a-new-downstream-mcp)
-8. [Optional: a local LLM for `request`](#optional-a-local-llm-for-request)
-9. [Configuration reference](#configuration-reference)
-10. [Testing](#testing)
-11. [Troubleshooting & pitfalls](#troubleshooting--pitfalls)
-12. [Security](#security)
-13. [Extending](#extending)
-14. [Project layout](#project-layout)
-15. [Debugging](#debugging)
+4. [How it compares](#how-it-compares)
+5. [Prerequisites](#prerequisites)
+6. [Build & run the demo](#build--run-the-demo)
+7. [Register the orchestrator with an agent](#register-the-orchestrator-with-an-agent)
+8. [Add a new downstream MCP](#add-a-new-downstream-mcp)
+9. [Optional: a local LLM for `request`](#optional-a-local-llm-for-request)
+10. [Configuration reference](#configuration-reference)
+11. [Testing](#testing)
+12. [Troubleshooting & pitfalls](#troubleshooting--pitfalls)
+13. [Security](#security)
+14. [Extending](#extending)
+15. [Project layout](#project-layout)
+16. [Debugging](#debugging)
 
 ---
 
@@ -207,6 +208,37 @@ discovered-tools block is exactly part of one turn's small `cache_write`, then r
 re-reading the *entire* tool catalog every turn, and instead pay a small one-time write per
 capability you actually discover. (The same ~5-minute cache TTL applies to both; a gap longer than
 that re-writes the prefix regardless of approach.)
+
+---
+
+## How it compares
+
+This implements a well-established pattern — *progressive tool discovery behind a small meta-tool
+surface* — so here is an honest map of where it sits, not a claim to have invented it.
+
+| | **This project** | **CLI aggregators** (e.g. [mcp-cli](https://www.philschmid.de/mcp-cli)) | **Enterprise gateways** (e.g. Kong, [Envoy AI Gateway](https://aigateway.envoyproxy.io/docs/0.5/capabilities/mcp/)) |
+| --- | --- | --- | --- |
+| Integration | **MCP server, typed tools, no shell needed** | CLI binary driven via the agent's shell | MCP server / proxy |
+| Tool discovery | progressive (`list` → `discover` → `route`) | progressive | varies |
+| NL routing | optional **in-process local model** (grammar-constrained), else heuristic | none — the agent builds each call | none / varies |
+| Enterprise layer (auth, multi-tenancy, rate limiting, observability) | **no** | no | **yes** |
+| Runtime | **.NET / C#** | single binary (Bun) | varies (Go, etc.) |
+
+**vs CLI aggregators (mcp-cli):** same core idea, but this is a native MCP server with typed,
+schema-validated tools — it needs **no shell/exec**, so it works in sandboxed, hosted, or
+non-coding agents where a CLI can't run, and the agent passes structured arguments instead of
+hand-built command strings. It also holds **warm cached connections** rather than spawning a fresh
+process per call. (mcp-cli is lighter — a single binary — and has a cross-tool search this
+deliberately doesn't.)
+
+**vs enterprise gateways (Kong, Envoy, mcp-proxy-server):** those are also MCP servers and add the
+production layer — auth, multi-tenancy, rate limiting, observability — that this does **not**. This
+is a focused, self-hostable implementation, not an enterprise gateway.
+
+**What's actually distinctive here:** it's **.NET / C# native** (most MCP tooling is TS/Python/Go),
+and it offers an **optional fully-local, no-API natural-language router** for the `request` path.
+The discovery/token-reduction pattern itself is not novel — the value is the .NET implementation,
+the no-shell typed-server integration, and the local-first option.
 
 ---
 
