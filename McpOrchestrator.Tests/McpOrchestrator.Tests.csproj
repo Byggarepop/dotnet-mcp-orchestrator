@@ -20,6 +20,7 @@
          server as a real downstream MCP. DemoMcp is referenced so it is built before tests
          run; the tests launch its compiled DLL as a separate process. -->
     <ProjectReference Include="..\McpOrchestrator\McpOrchestrator.csproj" />
+    <ProjectReference Include="..\McpOrchestrator.LocalLlm\McpOrchestrator.LocalLlm.csproj" />
     <ProjectReference Include="..\McpOrchestrator.DemoMcp\McpOrchestrator.DemoMcp.csproj" />
   </ItemGroup>
 

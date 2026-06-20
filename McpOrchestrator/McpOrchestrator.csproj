@@ -7,6 +7,16 @@
     <Nullable>enable</Nullable>
     <RootNamespace>McpOrchestrator</RootNamespace>
     <AssemblyName>McpOrchestrator</AssemblyName>
+
+    <!-- Packable as a .NET tool (install globally, then point .mcp.json at the
+         `mcp-orchestrator` command). Lean and framework-dependent; the optional local LLM
+         lives in the separate McpOrchestrator.LocalLlm package. -->
+    <PackAsTool>true</PackAsTool>
+    <ToolCommandName>mcp-orchestrator</ToolCommandName>
+    <PackageId>McpOrchestrator</PackageId>
+    <Version>0.1.0</Version>
+    <Description>A .NET-native MCP orchestrator: route one agent through one server to many MCP servers, with progressive tool discovery to keep context small.</Description>
+    <PackageTags>mcp;model-context-protocol;orchestrator;gateway;ai;agents</PackageTags>
   </PropertyGroup>
 
   <ItemGroup>
@@ -16,12 +26,6 @@
     <PackageReference Include="ModelContextProtocol" Version="1.4.0" />
     <PackageReference Include="ModelContextProtocol.Core" Version="1.4.0" />
     <PackageReference Include="Microsoft.Extensions.Hosting" Version="9.0.0" />
-    <!-- Optional embedded local LLM for the 'request' route planner (opt-in via config).
-         LLamaSharp runs a small GGUF model in-process on CPU; the Backend.Cpu package carries
-         the native llama.cpp libraries. The model weights are downloaded on first use, not
-         shipped here (see Orchestration/LocalLlm/ModelProvisioner). -->
-    <PackageReference Include="LLamaSharp" Version="0.27.0" />
-    <PackageReference Include="LLamaSharp.Backend.Cpu" Version="0.27.0" />
   </ItemGroup>
 
   <ItemGroup>

@@ -31,7 +31,8 @@ dotnet test McpOrchestrator.slnx                               # run the test su
 
 | Project | Role |
 | --- | --- |
-| `McpOrchestrator` | The orchestrator: MCP server to the agent, MCP client to downstream servers. |
+| `McpOrchestrator` | The orchestrator: MCP server to the agent, MCP client to downstream servers. Lean core tool (~1.4 MB). |
+| `McpOrchestrator.LocalLlm` | Optional fat tool: the same host + the embedded local LLM (~50 MB). |
 | `McpOrchestrator.DemoMcp` | Sample downstream MCP (`--persona jira` / `codegen` / `diag`). |
 | `McpOrchestrator.SmokeTest` | Console MCP client that drives the orchestrator end-to-end. |
 | `McpOrchestrator.Tests` | xUnit suite: unit + integration + end-to-end. |

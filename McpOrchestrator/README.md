@@ -45,15 +45,16 @@ The orchestrator is therefore both:
 5. [Prerequisites](#prerequisites)
 6. [Build & run the demo](#build--run-the-demo)
 7. [Register the orchestrator with an agent](#register-the-orchestrator-with-an-agent)
-8. [Add a new downstream MCP](#add-a-new-downstream-mcp)
-9. [Optional: a local LLM for `request`](#optional-a-local-llm-for-request)
-10. [Configuration reference](#configuration-reference)
-11. [Testing](#testing)
-12. [Troubleshooting & pitfalls](#troubleshooting--pitfalls)
-13. [Security](#security)
-14. [Extending](#extending)
-15. [Project layout](#project-layout)
-16. [Debugging](#debugging)
+8. [Packaging — install as a .NET tool](#packaging-install-as-a-net-tool)
+9. [Add a new downstream MCP](#add-a-new-downstream-mcp)
+10. [Optional: a local LLM for `request`](#optional-a-local-llm-for-request)
+11. [Configuration reference](#configuration-reference)
+12. [Testing](#testing)
+13. [Troubleshooting & pitfalls](#troubleshooting--pitfalls)
+14. [Security](#security)
+15. [Extending](#extending)
+16. [Project layout](#project-layout)
+17. [Debugging](#debugging)
 
 ---
 
@@ -328,6 +329,46 @@ Register a stdio server in [`.mcp.json`](../.mcp.json) (Visual Studio) and
 
 ---
 
+## Packaging — install as a .NET tool
+
+The orchestrator packs as a **.NET tool** (`dotnet pack`), so it can be installed and referenced by
+a command name instead of a project path. There are **two packages**, so you only pay for what you
+use:
+
+| Package | Command | Size | Contents |
+| --- | --- | --- | --- |
+| **`McpOrchestrator`** | `mcp-orchestrator` | **~1.4 MB** | Core orchestrator + heuristic `request`. The lean default. |
+| **`McpOrchestrator.LocalLlm`** | `mcp-orchestrator-llm` | **~50 MB** | The same host **plus** the embedded local LLM (LLamaSharp native backend). |
+
+Both are **framework-dependent** (need .NET 10 installed) and **portable** (one package, all
+platforms). The model weights are **never** in either package — they download on first use. The
+size gap is entirely the native llama.cpp libraries in the LLM package.
+
+```bash
+# build the packages locally
+dotnet pack McpOrchestrator/McpOrchestrator.csproj -c Release -o ./nupkg
+dotnet pack McpOrchestrator.LocalLlm/McpOrchestrator.LocalLlm.csproj -c Release -o ./nupkg
+
+# install the lean core tool from the local folder (or from a feed once published)
+dotnet tool install --global --add-source ./nupkg McpOrchestrator
+```
+
+Then register it by command name:
+
+```json
+{
+  "servers": {
+    "orchestrator": { "type": "stdio", "command": "mcp-orchestrator" }
+  }
+}
+```
+
+> Want a single self-contained binary with **no .NET install required**? Use a per-platform publish
+> instead of a tool: `dotnet publish McpOrchestrator -c Release -r win-x64 --self-contained` (bundles
+> the .NET runtime, ~90 MB for that one platform).
+
+---
+
 ## Add a new downstream MCP
 
 Adding a capability is a **config-only** change — no code. Edit
@@ -383,15 +424,20 @@ To **temporarily disable** a capability without deleting it, set `"enabled": fal
 
 The `request` tool's default planner is a keyword heuristic with no language understanding. You
 can replace it with a **small LLM that runs in-process** (no external server, no GPU) so
-`request` reliably turns a sentence into the right tool call. It is **opt-in** and the base server
-works without it.
+`request` reliably turns a sentence into the right tool call. It is **opt-in** and ships as a
+**separate package/host** so the core stays lean (see [Packaging](#packaging-install-as-a-net-tool)).
 
-**Enable it** by setting an environment variable on the server and restarting:
+**Enable it** by running the `McpOrchestrator.LocalLlm` host instead of the core one — it reuses
+the exact same orchestrator wiring and only swaps in the local-model planner:
 
 ```jsonc
-// in the server's env block (.mcp.json / .vscode/mcp.json), or your shell
-"env": { "MCP_ORCHESTRATOR_PLANNER": "llm" }
+// .mcp.json / .vscode/mcp.json — use the LLM host instead of the core one
+"command": "mcp-orchestrator-llm"        // installed as a tool, OR:
+"command": "dotnet", "args": ["run", "--project", ".../McpOrchestrator.LocalLlm", "--no-build"]
 ```
+
+The LLM planner is **on by default** in that host; set `MCP_ORCHESTRATOR_PLANNER=heuristic` to force
+heuristic-only (and skip the model entirely). The core `McpOrchestrator` host never loads the LLM.
 
 **What happens:**
 
@@ -410,7 +456,7 @@ works without it.
 
 | Variable | Default | Meaning |
 | --- | --- | --- |
-| `MCP_ORCHESTRATOR_PLANNER` | `heuristic` | Set to `llm` to enable the local model. |
+| `MCP_ORCHESTRATOR_PLANNER` | `llm` (in the LLM host) | Set to `heuristic` to force heuristic-only and skip the model. |
 | `MCP_ORCHESTRATOR_LLM_MODEL` | _(unset)_ | Path to a GGUF you already have — skips the download. |
 | `MCP_ORCHESTRATOR_LLM_URL` | Qwen2.5-0.5B Q4 | Download URL for the model (to choose a different one, e.g. a 1.5B). |
 | `MCP_ORCHESTRATOR_LLM_CACHE` | `%LOCALAPPDATA%/McpOrchestrator/models` | Where the model is cached. |
@@ -535,8 +581,9 @@ which environment secrets) you expose to a downstream process. Downstream tool *
 ## Project layout
 
 ```
-McpOrchestrator/
-  Program.cs                              Host + MCP stdio server wiring (DI of the services below)
+McpOrchestrator/                         Core tool package — lean, no LLM dependency
+  Program.cs                              Entry point: OrchestratorHost.RunAsync(args)
+  OrchestratorHost.cs                     Reusable host wiring (DI, MCP server) an LLM host can reuse
   orchestrator.config.json               The downstream catalog (connections + instructions)
   Tools/OrchestratorTool.cs              The 4 meta-tools: list_capabilities/discover_tools/route/request
   Orchestration/
@@ -550,12 +597,14 @@ McpOrchestrator/
     FallbackRoutePlanner.cs              Decorator: try primary planner, fall back to the heuristic
     ToolPayloads.cs                      Pure argument/result conversions (unit-tested)
     RoutingModels.cs                     DTOs returned to the agent (+ JSON options)
-    LocalLlm/                            Optional embedded local-LLM planner (opt-in)
-      LocalLlmOptions.cs                 Env-bound options (model, cache, threads, …)
-      ModelProvisioner.cs                Resolve/download the GGUF model (atomic, cached)
-      GbnfGrammar.cs                     Grammars constraining output to tool names / schema keys
-      LocalLlm.cs                        Lazy llama.cpp load + grammar-constrained completion
-      LlmRoutePlanner.cs                 Two-step constrained planning (select tool, extract args)
+
+McpOrchestrator.LocalLlm/                Optional fat tool package — core + embedded local LLM
+  Program.cs                              Entry point: reuses OrchestratorHost, injects the LLM planner
+  LocalLlmOptions.cs                      Env-bound options (model, cache, threads, …)
+  ModelProvisioner.cs                     Resolve/download the GGUF model (atomic, cached)
+  GbnfGrammar.cs                          Grammars constraining output to tool names / schema keys
+  LocalLlm.cs                             Lazy llama.cpp load + grammar-constrained completion
+  LlmRoutePlanner.cs                      Two-step constrained planning (select tool, extract args)
 
 McpOrchestrator.DemoMcp/                 Sample downstream MCP (personas: jira / codegen / diag)
 McpOrchestrator.SmokeTest/               Console MCP client that drives the orchestrator

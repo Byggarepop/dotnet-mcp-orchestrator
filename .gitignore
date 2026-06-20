@@ -5,3 +5,6 @@
 ## User-specific / IDE
 .vs/
 *.user
+
+# Built NuGet packages
+nupkg/
