@@ -38,10 +38,9 @@
   </ItemGroup>
 
   <ItemGroup>
-    <!-- The repo-local demo config points at the sample DemoMcp and is used during development via
-         the in-repo source path (CapabilityCatalog.ResolveConfigPath). It is intentionally NOT
-         copied to output or packed — an installed tool would have no DemoMcp to launch. -->
-    <None Include="orchestrator.config.json" />
+    <!-- A sample catalog (points at the demo DemoMcp). It is not auto-discovered, copied, or
+         packed — the SmokeTest and the IDE configs point MCP_ORCHESTRATOR_CONFIG at it explicitly. -->
+    <None Include="orchestrator.config.sample.json" />
     <!-- What ships instead: a minimal TEMPLATE, emitted as orchestrator.config.json next to the
          assembly. A fresh install then starts with a clean (effectively empty) catalog plus an
          editable example, rather than broken demo capabilities. Users normally point

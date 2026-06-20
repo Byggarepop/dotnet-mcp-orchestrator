@@ -405,8 +405,9 @@ installs that don't depend on the exact runtime, **tier 3** for zero-install on 
 
 ## Add a new downstream MCP
 
-Adding a capability is a **config-only** change — no code. Edit
-[`orchestrator.config.json`](orchestrator.config.json) and add one entry to `capabilities`.
+Adding a capability is a **config-only** change — no code. Edit your config file — the demo
+[`orchestrator.config.sample.json`](orchestrator.config.sample.json), or whatever
+`MCP_ORCHESTRATOR_CONFIG` points at — and add one entry to `capabilities`.
 
 **Step 1 — describe the connection and the instructions.**
 
@@ -534,9 +535,14 @@ Each entry in `capabilities` is one downstream MCP server.
 **Config location** is resolved in this order, first hit wins:
 
 1. `MCP_ORCHESTRATOR_CONFIG` environment variable (an explicit file path), then
-2. `<solutionDir>/McpOrchestrator/orchestrator.config.json` (the in-repo source), then
-3. `orchestrator.config.json` next to the built assembly, then
+2. `<solutionDir>/McpOrchestrator/orchestrator.config.json` (if you create one there), then
+3. `orchestrator.config.json` next to the built assembly (the shipped template), then
 4. `orchestrator.config.json` in the host content root.
+
+> The repo does **not** check in an `orchestrator.config.json` at the default path — only a
+> [`orchestrator.config.template.json`](orchestrator.config.template.json) (what installed tools
+> ship) and an [`orchestrator.config.sample.json`](orchestrator.config.sample.json) demo catalog
+> that the SmokeTest and IDE configs point `MCP_ORCHESTRATOR_CONFIG` at explicitly.
 
 A missing or invalid config is non-fatal: the server starts with **zero capabilities** and logs
 a warning/error rather than crashing.
@@ -641,7 +647,8 @@ which environment secrets) you expose to a downstream process. Downstream tool *
 McpOrchestrator/                         Core tool package — lean, no LLM dependency
   Program.cs                              Entry point: OrchestratorHost.RunAsync(args)
   OrchestratorHost.cs                     Reusable host wiring (DI, MCP server) an LLM host can reuse
-  orchestrator.config.json               The downstream catalog (connections + instructions)
+  orchestrator.config.template.json      Minimal template shipped with the installed tool
+  orchestrator.config.sample.json        Demo catalog (jira/codegen/files) the SmokeTest/IDE point at
   Tools/OrchestratorTool.cs              The 4 meta-tools: list_capabilities/discover_tools/route/request
   Orchestration/
     CapabilityDescriptor.cs              Config POCO: one downstream MCP (+ OrchestratorConfig root)

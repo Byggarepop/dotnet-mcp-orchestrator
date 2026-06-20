@@ -8,7 +8,10 @@
         "--project",
         "C:/Users/sebas/Projects/MCP/McpOrchestrator/McpOrchestrator.csproj",
         "--no-build"
-      ]
+      ],
+      "env": {
+        "MCP_ORCHESTRATOR_CONFIG": "C:/Users/sebas/Projects/MCP/McpOrchestrator/orchestrator.config.sample.json"
+      }
     }
   }
 }
