@@ -1,3 +1,6 @@
+using System.Text.Json;
+using System.Text.Json.Serialization;
+
 namespace McpOrchestrator.Orchestration;
 
 /// <summary>
@@ -64,3 +67,14 @@ public sealed class OrchestratorConfig
     /// <summary>The downstream MCP servers this orchestrator can reach.</summary>
     public List<CapabilityDescriptor> Capabilities { get; set; } = new();
 }
+
+/// <summary>
+/// Source-generation context for reading the config file (case-insensitive, tolerant of comments
+/// and trailing commas). AOT/trim-safe — no reflection-based deserialization.
+/// </summary>
+[JsonSourceGenerationOptions(
+    PropertyNameCaseInsensitive = true,
+    AllowTrailingCommas = true,
+    ReadCommentHandling = JsonCommentHandling.Skip)]
+[JsonSerializable(typeof(OrchestratorConfig))]
+internal sealed partial class OrchestratorConfigJsonContext : JsonSerializerContext;
