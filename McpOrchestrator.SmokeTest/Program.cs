@@ -33,8 +33,6 @@ await CallAsync(client, "list_capabilities", new());
 
 await CallAsync(client, "discover_tools", new() { ["capability"] = "jira" });
 
-await CallAsync(client, "search_tools", new() { ["query"] = "issue" });
-
 await CallAsync(client, "route", new()
 {
     ["capability"] = "jira",

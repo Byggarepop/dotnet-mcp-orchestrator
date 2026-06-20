@@ -12,12 +12,12 @@ always-loaded context stays flat no matter how many servers you connect (see
 
 The orchestrator is therefore both:
 
-- an **MCP server** to the agent (it exposes the five meta-tools below), and
+- an **MCP server** to the agent (it exposes the four meta-tools below), and
 - an **MCP client** to each downstream server (it launches them and forwards tool calls).
 
 ```
                          ┌─────────────────────── orchestrator (this server) ───────────────────────┐
-   one agent  ──MCP──▶   │  list_capabilities · discover_tools · search_tools · route · request       │
+   one agent  ──MCP──▶   │  list_capabilities · discover_tools · route · request                     │
    (the model)           │        │ catalog (config)            │ connection manager (MCP client)    │
                          └────────┼─────────────────────────────┼────────────────────────────────────┘
                                   │                              │
@@ -39,7 +39,7 @@ The orchestrator is therefore both:
 ## Contents
 
 1. [How it works](#how-it-works)
-2. [The five tools](#the-five-tools-agent-facing-surface)
+2. [The four tools](#the-four-tools-agent-facing-surface)
 3. [Token scaling](#token-scaling)
 4. [Prerequisites](#prerequisites)
 5. [Build & run the demo](#build--run-the-demo)
@@ -61,8 +61,7 @@ The orchestrator is therefore both:
 1. The agent asks the orchestrator **what it can reach** (`list_capabilities`) — the catalog
    comes from config, so each capability has a name, a summary, and usage instructions.
 2. The agent reads each capability's **instructions**, calls `discover_tools` to see the exact
-   tools and their JSON schemas (or `search_tools` to find a tool by keyword across all
-   capabilities), then `route`s a specific tool with arguments it fills in itself.
+   tools and their JSON schemas, then `route`s a specific tool with arguments it fills in itself.
 3. The orchestrator **connects to that downstream MCP** (launching it on first use), invokes the
    tool, and **relays the result back** to the agent.
 
@@ -80,13 +79,12 @@ retries instead of awaiting a dead connection.
 
 ---
 
-## The five tools (agent-facing surface)
+## The four tools (agent-facing surface)
 
 | Tool | Parameters | Purpose |
 | --- | --- | --- |
 | `list_capabilities` | — | List the downstream MCPs (name, summary, instructions). Call first. |
 | `discover_tools` | `capability` | Connect to one capability and list its tools + input schemas. |
-| `search_tools` | `query` | Search tool names/descriptions across **all** capabilities for a keyword (the cross-catalog "grep"). Returns each match with its capability. |
 | `route` | `capability`, `tool`, `arguments` | **Preferred.** Forward a specific tool call (you pick the tool and fill the arguments) and return its result. |
 | `request` | `capability`, `request` | *Best-effort convenience.* Describe a need in words; the orchestrator **guesses** the tool/args with a keyword heuristic. Unreliable — prefer `route`. |
 
@@ -117,7 +115,7 @@ model that runs in-process and turns the sentence into a real tool call. See
 ## Token scaling
 
 The orchestrator's main benefit is that the agent's **always-loaded tool surface stays constant
-at five tools (~900 tokens) no matter how many downstream MCPs you connect.** This is the inverse
+at four tools (~800 tokens) no matter how many downstream MCPs you connect.** This is the inverse
 of wiring many MCP servers directly into one agent, where *every tool from every server* is
 injected as a permanent tool definition (name + description + full JSON schema) and sits in context
 on every turn.
@@ -125,14 +123,14 @@ on every turn.
 | Setup | Always-loaded tool tokens |
 | --- | --- |
 | **Direct:** 10 MCPs × ~12 tools, ~250 tok per schema | **~30,000 tokens, every turn** |
-| **Orchestrator:** the 5 meta-tools | **~900 tokens, every turn — flat** |
+| **Orchestrator:** the 4 meta-tools | **~800 tokens, every turn — flat** |
 
 Downstream detail moves from *persistent tool definitions* to *on-demand tool results* — content
 you only pay for when you fetch it:
 
 | Surface | Cost | When it is in context |
 | --- | --- | --- |
-| The 5 meta-tools | ~900 tokens, **flat** | always |
+| The 4 meta-tools | ~800 tokens, **flat** | always |
 | `list_capabilities` | **~100 tokens per capability** | only when called (a transient result) |
 | `discover_tools(capability)` | one capability's full schemas | only when called, **one capability at a time** |
 
@@ -142,22 +140,22 @@ the agent actually inspects it — you never load every capability's schemas at 
 
 ### The flat surface is conditional: route *through* the orchestrator
 
-The five tools are fixed in the orchestrator's code — no agent file can change them. But the agent
-file's `tools:` line is a **grant list**, and a user can grant their agent more than those five by
+The four tools are fixed in the orchestrator's code — no agent file can change them. But the agent
+file's `tools:` line is a **grant list**, and a user can grant their agent more than four tools by
 referencing **other MCP servers directly**, alongside the orchestrator:
 
 ```yaml
 tools: [ 'orchestrator/*', 'github/*', 'postgres/*' ]
 ```
 
-The flat ~900-token property holds **only for what is reached through the orchestrator.** Any server
+The flat ~800-token property holds **only for what is reached through the orchestrator.** Any server
 listed directly has *its* tools injected as persistent definitions again — the very cost the
 orchestrator removes:
 
 | Agent file `tools:` | Always-loaded tool tokens |
 | --- | --- |
-| `[ 'orchestrator/*' ]` | ~900, flat — even with 50 capabilities behind it |
-| `[ 'orchestrator/*', 'github/*', 'postgres/*' ]` | ~900 **plus** every `github` + `postgres` tool schema |
+| `[ 'orchestrator/*' ]` | ~800, flat — even with 50 capabilities behind it |
+| `[ 'orchestrator/*', 'github/*', 'postgres/*' ]` | ~800 **plus** every `github` + `postgres` tool schema |
 
 So put the long tail of tools **behind** the orchestrator (`orchestrator/*`), and only promote a
 tool to a direct `tools:` entry when avoiding its discovery round-trip is worth paying its always-on
@@ -175,7 +173,7 @@ capabilities). It stays cheap into the dozens; to keep it small as you scale:
    agent pulls a slice rather than the whole catalog.
 
 The trade-off is **tokens for round-trips**: discovery (`list_capabilities` → `discover_tools` →
-`route`) costs a few extra turns, in exchange for a flat ~900-token surface instead of tens of
+`route`) costs a few extra turns, in exchange for a flat ~800-token surface instead of tens of
 thousands. For "many MCPs on a modest context budget," that is strongly favorable — which is the
 reason this architecture exists.
 
@@ -508,7 +506,7 @@ which environment secrets) you expose to a downstream process. Downstream tool *
 McpOrchestrator/
   Program.cs                              Host + MCP stdio server wiring (DI of the services below)
   orchestrator.config.json               The downstream catalog (connections + instructions)
-  Tools/OrchestratorTool.cs              The 5 meta-tools: list_capabilities/discover_tools/search_tools/route/request
+  Tools/OrchestratorTool.cs              The 4 meta-tools: list_capabilities/discover_tools/route/request
   Orchestration/
     CapabilityDescriptor.cs              Config POCO: one downstream MCP (+ OrchestratorConfig root)
     ICapabilityCatalog.cs                The address book of downstream capabilities

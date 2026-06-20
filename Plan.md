@@ -45,7 +45,7 @@ end-to-end by `McpOrchestrator.SmokeTest`:
 - **Route planner** (`IRoutePlanner` / `HeuristicRoutePlanner`) — turns a NL request into a
   concrete tool call. The seam where a local/cloud LLM plugs in; the shipped planner is a
   dependency-free heuristic.
-- **Tools** (`OrchestratorTool`) — the five meta-tools the agent sees.
+- **Tools** (`OrchestratorTool`) — the four meta-tools the agent sees.
 
 ## Tech
 

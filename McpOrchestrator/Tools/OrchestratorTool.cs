@@ -79,61 +79,6 @@ public sealed class OrchestratorTool
     }
 
     /// <summary>
-    /// Tool <c>search_tools</c>: searches tool names and descriptions across <em>all</em>
-    /// capabilities and returns the matches with the capability each belongs to — the
-    /// cross-catalog equivalent of grep. Connects to each capability (caching the connection); a
-    /// capability that cannot be reached is reported in <c>errors</c> rather than failing the search.
-    /// </summary>
-    [McpServerTool(Name = "search_tools")]
-    [Description(
-        "Search tool names and descriptions across ALL capabilities for the given words. Returns " +
-        "each matching tool with the capability that provides it. Use when you know the action you " +
-        "want but not which capability has it — then call 'route' with the capability + tool you " +
-        "found. All space-separated words must match (case-insensitive).")]
-    public static async Task<string> SearchTools(
-        IDownstreamConnectionManager connections,
-        ICapabilityCatalog catalog,
-        ILogger<OrchestratorTool> logger,
-        [Description("Words to match against tool names and descriptions, e.g. 'issue' or 'read file'.")]
-        string query,
-        CancellationToken cancellationToken)
-    {
-        logger.LogInformation("search_tools query={Query}", query);
-
-        var terms = (query ?? string.Empty)
-            .Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries)
-            .Select(t => t.ToLowerInvariant())
-            .ToArray();
-
-        var matches = new List<ToolMatch>();
-        var errors = new List<CapabilityError>();
-
-        foreach (var capability in catalog.Capabilities)
-        {
-            try
-            {
-                var tools = await connections.ListToolsAsync(capability.Name, cancellationToken);
-                foreach (var tool in tools)
-                {
-                    var haystack = $"{tool.Name} {tool.Description}".ToLowerInvariant();
-                    if (terms.Length > 0 && terms.All(haystack.Contains))
-                    {
-                        matches.Add(new ToolMatch(capability.Name, tool.Name, tool.Description));
-                    }
-                }
-            }
-            catch (Exception ex)
-            {
-                logger.LogWarning(ex, "search_tools could not reach capability={Capability}", capability.Name);
-                errors.Add(new CapabilityError(capability.Name, ex.Message));
-            }
-        }
-
-        return OrchestratorJson.Serialize(
-            new ToolSearchView(query ?? string.Empty, matches, errors.Count == 0 ? null : errors));
-    }
-
-    /// <summary>
     /// Tool <c>route</c> (preferred dispatch): forwards a specific tool call — chosen by the
     /// agent, with arguments the agent fills — to a capability and returns the downstream result
     /// as a structured <see cref="RouteView"/>. Exceptions become a structured <see cref="ErrorView"/>.

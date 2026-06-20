@@ -18,7 +18,7 @@ holds the connections to all of those downstream MCP servers and routes your cal
 You express *what you need*; the orchestrator forwards it to the right server and relays the
 answer back.
 
-This means you never switch agents to change tools. Everything is reachable through the five
+This means you never switch agents to change tools. Everything is reachable through the four
 orchestrator tools below.
 
 ## Capabilities (downstream MCP servers)
@@ -38,9 +38,7 @@ treat the entries below as a guide:
 1. **Discover.** Call `list_capabilities` to see what the orchestrator can reach right now
    (name + what each is for + usage instructions).
 2. **Inspect (when you want precise control).** Call `discover_tools(capability)` to get a
-   capability's concrete tools and their input schemas. If you know the action you want but not
-   which capability has it, call `search_tools(query)` to grep tool names/descriptions across
-   **all** capabilities and get back each match with its capability.
+   capability's concrete tools and their input schemas.
 3. **Act:**
    - **Preferred — `route(capability, tool, arguments)`:** you pick the exact tool and pass an
      `arguments` object matching its schema, following the capability's instructions. This is
