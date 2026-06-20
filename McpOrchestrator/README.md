@@ -363,9 +363,36 @@ Then register it by command name:
 }
 ```
 
-> Want a single self-contained binary with **no .NET install required**? Use a per-platform publish
-> instead of a tool: `dotnet publish McpOrchestrator -c Release -r win-x64 --self-contained` (bundles
-> the .NET runtime, ~90 MB for that one platform).
+### Self-contained builds (no .NET install required)
+
+For users who don't have .NET, ship a **self-contained** build instead — it bundles the runtime, so
+there's no prerequisite (the trade-off is size, and one build per platform). Note that the *tool*
+packages above don't need this for developers: installing a `dotnet tool` already implies .NET is
+present.
+
+### Build everything with one script
+
+[`pack-all.ps1`](../pack-all.ps1) (repo root) produces every artifact into `./dist`, each named with
+its runtime id (OS + architecture) and type:
+
+```powershell
+./pack-all.ps1                          # all RIDs: win/linux/osx × x64/arm64
+./pack-all.ps1 -Rids win-x64,linux-x64  # just these
+./pack-all.ps1 -SkipSelfContained       # only the portable .nupkg tools
+```
+
+It emits:
+
+| Artifact | Example | Approx size | Needs .NET? |
+| --- | --- | --- | --- |
+| Portable core tool | `McpOrchestrator.0.1.0.nupkg` | 1.4 MB | yes |
+| Portable LLM tool | `McpOrchestrator.LocalLlm.0.1.0.nupkg` | 50 MB | yes |
+| Self-contained core | `McpOrchestrator-0.1.0-win-x64-selfcontained.zip` | ~32 MB | **no** |
+| Self-contained LLM | `McpOrchestrator.LocalLlm-0.1.0-win-x64-selfcontained.zip` | ~43 MB | **no** |
+
+The self-contained core is a single compressed executable; the LLM one is a folder (it carries that
+platform's native llama.cpp libraries). Model weights are never bundled in any artifact — they
+download on first use.
 
 ---
 

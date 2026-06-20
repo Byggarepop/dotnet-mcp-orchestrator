@@ -8,3 +8,6 @@
 
 # Built NuGet packages
 nupkg/
+
+# Release artifacts from pack-all.ps1
+dist/
