@@ -79,19 +79,17 @@ public sealed class OrchestratorTool
     }
 
     /// <summary>
-    /// Tool <c>route</c> (preferred dispatch): forwards a specific tool call — chosen by the
-    /// agent, with arguments the agent fills — to a capability and returns the downstream result
-    /// as a structured <see cref="RouteView"/>. Exceptions become a structured <see cref="ErrorView"/>.
+    /// Tool <c>route</c>: forwards a specific tool call — chosen by the agent, with arguments the
+    /// agent fills — to a capability and returns the downstream result as a structured
+    /// <see cref="RouteView"/>. Exceptions become a structured <see cref="ErrorView"/>.
     /// </summary>
     [McpServerTool(Name = "route")]
     [Description(
-        "PREFERRED dispatch tool. Forward a tool call to a downstream capability and return " +
-        "its result. You choose the capability and the exact tool name (from " +
-        "'discover_tools') and pass an 'arguments' object matching that tool's input schema — " +
-        "you do the interpreting, the orchestrator just couriers the call verbatim and relays " +
-        "the response. This is the reliable path; use it for all real work. Honor the " +
-        "capability's instructions when filling arguments (e.g. always include the Jira issue " +
-        "key).")]
+        "Forward a tool call to a downstream capability and return its result. You choose the " +
+        "capability and the exact tool name (from 'discover_tools') and pass an 'arguments' " +
+        "object matching that tool's input schema — you do the interpreting, the orchestrator " +
+        "just couriers the call verbatim and relays the response. Honor the capability's " +
+        "instructions when filling arguments (e.g. always include the Jira issue key).")]
     public static async Task<string> Route(
         IDownstreamConnectionManager connections,
         ICapabilityCatalog catalog,
@@ -109,7 +107,7 @@ public sealed class OrchestratorTool
         {
             var args = ToolPayloads.ParseArguments(arguments);
             var result = await connections.CallToolAsync(capability, tool, args, cancellationToken);
-            return OrchestratorJson.Serialize(ToRouteView(capability, tool, args, result, rationale: null));
+            return OrchestratorJson.Serialize(ToRouteView(capability, tool, args, result));
         }
         catch (Exception ex)
         {
@@ -118,62 +116,14 @@ public sealed class OrchestratorTool
         }
     }
 
-    /// <summary>
-    /// Tool <c>request</c> (best-effort convenience): lets the orchestrator's <see cref="IRoutePlanner"/>
-    /// guess the tool and arguments from a natural-language description, then invokes it. Reliable
-    /// only for trivial cases — prefer <c>route</c>. Returns the same <see cref="RouteView"/> shape,
-    /// with the planner's <see cref="RouteView.Rationale"/> populated.
-    /// </summary>
-    [McpServerTool(Name = "request")]
-    [Description(
-        "BEST-EFFORT CONVENIENCE — prefer 'route'. Describe in natural language what you need " +
-        "and let the orchestrator GUESS the downstream tool and arguments with a simple " +
-        "keyword heuristic (no language understanding). It only works for trivial cases where " +
-        "the tool is obvious and the request literally contains the argument values (e.g. an " +
-        "explicit 'PROJ-123' key); otherwise it will mis-map your text into the wrong field. " +
-        "For anything real, use 'discover_tools' + 'route' and supply the arguments yourself.")]
-    public static async Task<string> Request(
-        IDownstreamConnectionManager connections,
-        IRoutePlanner planner,
-        ICapabilityCatalog catalog,
-        ILogger<OrchestratorTool> logger,
-        [Description("Capability name, e.g. 'jira'.")]
-        string capability,
-        [Description("Plain-language description of what you need from this capability.")]
-        string request,
-        CancellationToken cancellationToken)
-    {
-        logger.LogInformation("request capability={Capability} request={Request}", capability, request);
-        try
-        {
-            var tools = await connections.ListToolsAsync(capability, cancellationToken);
-            var plan = await planner.PlanAsync(capability, tools, request, cancellationToken);
-            if (plan is null)
-            {
-                return OrchestratorJson.Serialize(
-                    new ErrorView($"Capability '{capability}' exposes no tools to satisfy the request."));
-            }
-
-            var result = await connections.CallToolAsync(capability, plan.Tool, plan.Arguments, cancellationToken);
-            return OrchestratorJson.Serialize(
-                ToRouteView(capability, plan.Tool, plan.Arguments, result, plan.Rationale));
-        }
-        catch (Exception ex)
-        {
-            logger.LogError(ex, "request failed for capability={Capability}", capability);
-            return Error(ex, catalog);
-        }
-    }
-
     // ----- helpers -----
 
-    /// <summary>Builds the structured <see cref="RouteView"/> returned by <c>route</c>/<c>request</c>.</summary>
+    /// <summary>Builds the structured <see cref="RouteView"/> returned by <c>route</c>.</summary>
     private static RouteView ToRouteView(
         string capability,
         string tool,
         IReadOnlyDictionary<string, object?> args,
-        CallToolResult result,
-        string? rationale) => new()
+        CallToolResult result) => new()
     {
         Capability = capability,
         Tool = tool,
@@ -181,7 +131,6 @@ public sealed class OrchestratorTool
         Text = ToolPayloads.FlattenText(result),
         Structured = result.StructuredContent,
         Arguments = JsonSerializer.SerializeToNode(args, OrchestratorJson.Options),
-        Rationale = rationale,
     };
 
     /// <summary>

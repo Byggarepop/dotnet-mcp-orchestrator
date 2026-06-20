@@ -46,12 +46,6 @@ await CallAsync(client, "route", new()
     ["arguments"] = new Dictionary<string, object?> { ["issueKey"] = "PROJ-1" },
 });
 
-await CallAsync(client, "request", new()
-{
-    ["capability"] = "jira",
-    ["request"] = "what is the status of PROJ-3?",
-});
-
 await CallAsync(client, "route", new()
 {
     ["capability"] = "codegen",

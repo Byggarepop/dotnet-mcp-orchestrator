@@ -8,19 +8,14 @@ using Microsoft.Extensions.Logging;
 namespace McpOrchestrator;
 
 /// <summary>
-/// Builds and runs the orchestrator MCP server. Factored out of <c>Program</c> so an alternative
-/// host (e.g. the optional <c>McpOrchestrator.LocalLlm</c> package) can reuse the exact same wiring
-/// and only swap in a different <see cref="IRoutePlanner"/> — without the core ever depending on
-/// the LLM stack.
+/// Builds and runs the orchestrator MCP server: it exposes the meta-tools to the agent and proxies
+/// calls to the downstream MCP servers in the catalog. A pure relay — it never interprets the
+/// agent's input, it forwards exactly what the agent sends.
 /// </summary>
 public static class OrchestratorHost
 {
-    /// <summary>
-    /// Runs the server over stdio. If <paramref name="configurePlanner"/> is supplied it owns the
-    /// <see cref="IRoutePlanner"/> registration; otherwise the dependency-free
-    /// <see cref="HeuristicRoutePlanner"/> is used.
-    /// </summary>
-    public static async Task RunAsync(string[] args, Action<IServiceCollection>? configurePlanner = null)
+    /// <summary>Runs the server over stdio until the host shuts down.</summary>
+    public static async Task RunAsync(string[] args)
     {
         RunDebugGateIfRequested();
 
@@ -32,26 +27,12 @@ public static class OrchestratorHost
         // Orchestration services:
         //  - ICapabilityCatalog          : the address book of downstream MCPs (from config).
         //  - IDownstreamConnectionManager: connects to / proxies calls to those MCPs (MCP client).
-        //  - IRoutePlanner               : natural-language need -> concrete tool call (the seam a
-        //                                  host may override via configurePlanner).
         var contentRoot = builder.Environment.ContentRootPath;
         builder.Services.AddSingleton<ICapabilityCatalog>(sp =>
             CapabilityCatalog.Load(
                 contentRoot,
                 sp.GetRequiredService<ILoggerFactory>().CreateLogger<CapabilityCatalog>()));
         builder.Services.AddSingleton<IDownstreamConnectionManager, DownstreamConnectionManager>();
-
-        // The heuristic is always available — both as the default planner and as the fallback an
-        // overriding planner (e.g. the local LLM) can delegate to.
-        builder.Services.AddSingleton<HeuristicRoutePlanner>();
-        if (configurePlanner is not null)
-        {
-            configurePlanner(builder.Services);
-        }
-        else
-        {
-            builder.Services.AddSingleton<IRoutePlanner>(sp => sp.GetRequiredService<HeuristicRoutePlanner>());
-        }
 
         builder.Services
             .AddMcpServer()
