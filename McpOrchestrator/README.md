@@ -27,18 +27,19 @@ The orchestrator is therefore both:
 
 1. [How it works](#how-it-works)
 2. [The four tools](#the-four-tools-agent-facing-surface)
-3. [Prerequisites](#prerequisites)
-4. [Build & run the demo](#build--run-the-demo)
-5. [Register the orchestrator with an agent](#register-the-orchestrator-with-an-agent)
-6. [Add a new downstream MCP](#add-a-new-downstream-mcp)
-7. [Optional: a local LLM for `request`](#optional-a-local-llm-for-request)
-8. [Configuration reference](#configuration-reference)
-9. [Testing](#testing)
-10. [Troubleshooting & pitfalls](#troubleshooting--pitfalls)
-11. [Security](#security)
-12. [Extending](#extending)
-13. [Project layout](#project-layout)
-14. [Debugging](#debugging)
+3. [Token scaling](#token-scaling)
+4. [Prerequisites](#prerequisites)
+5. [Build & run the demo](#build--run-the-demo)
+6. [Register the orchestrator with an agent](#register-the-orchestrator-with-an-agent)
+7. [Add a new downstream MCP](#add-a-new-downstream-mcp)
+8. [Optional: a local LLM for `request`](#optional-a-local-llm-for-request)
+9. [Configuration reference](#configuration-reference)
+10. [Testing](#testing)
+11. [Troubleshooting & pitfalls](#troubleshooting--pitfalls)
+12. [Security](#security)
+13. [Extending](#extending)
+14. [Project layout](#project-layout)
+15. [Debugging](#debugging)
 
 ---
 
@@ -95,6 +96,50 @@ is pinned down by a characterization test in the test suite.)
 You can make `request` genuinely smart by enabling the **optional embedded local LLM** — a small
 model that runs in-process and turns the sentence into a real tool call. See
 [Optional: a local LLM for `request`](#optional-a-local-llm-for-request).
+
+---
+
+## Token scaling
+
+The orchestrator's main benefit is that the agent's **always-loaded tool surface stays constant
+at four tools (~800 tokens) no matter how many downstream MCPs you connect.** This is the inverse
+of wiring many MCP servers directly into one agent, where *every tool from every server* is
+injected as a permanent tool definition (name + description + full JSON schema) and sits in context
+on every turn.
+
+| Setup | Always-loaded tool tokens |
+| --- | --- |
+| **Direct:** 10 MCPs × ~12 tools, ~250 tok per schema | **~30,000 tokens, every turn** |
+| **Orchestrator:** the 4 meta-tools | **~800 tokens, every turn — flat** |
+
+Downstream detail moves from *persistent tool definitions* to *on-demand tool results* — content
+you only pay for when you fetch it:
+
+| Surface | Cost | When it is in context |
+| --- | --- | --- |
+| The 4 meta-tools | ~800 tokens, **flat** | always |
+| `list_capabilities` | **~100 tokens per capability** | only when called (a transient result) |
+| `discover_tools(capability)` | one capability's full schemas | only when called, **one capability at a time** |
+
+So adding the 50th MCP does **not** change the always-on cost. It adds ~100 tokens to a
+`list_capabilities` call *when the agent makes one*, and that capability's full schemas load only if
+the agent actually inspects it — you never load every capability's schemas at once.
+
+**The one place cost grows linearly** is the `list_capabilities` listing (~100 tokens ×
+capabilities). It stays cheap into the dozens; to keep it small as you scale:
+
+1. **Keep each capability's `summary`/`instructions` terse** — this is the biggest lever and you
+   control it in config.
+2. **Don't enumerate capabilities in the agent file's prose.** That text *is* persistent
+   instruction tokens. Keep the agent file a short guide and let `list_capabilities` be the
+   authoritative, on-demand list.
+3. **At hundreds of capabilities,** add a category/filter parameter to `list_capabilities` so the
+   agent pulls a slice rather than the whole catalog.
+
+The trade-off is **tokens for round-trips**: discovery (`list_capabilities` → `discover_tools` →
+`route`) costs a few extra turns, in exchange for a flat ~800-token surface instead of tens of
+thousands. For "many MCPs on a modest context budget," that is strongly favorable — which is the
+reason this architecture exists.
 
 ---
 
