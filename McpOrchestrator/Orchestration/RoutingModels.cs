@@ -28,6 +28,18 @@ public sealed record ToolView(string Name, string? Description, JsonElement Inpu
 /// <summary>The result of <c>discover_tools</c>: a capability and the tools it exposes.</summary>
 public sealed record DiscoverView(string Capability, IReadOnlyList<ToolView> Tools);
 
+/// <summary>One hit from <c>search_tools</c>: a tool and the capability that provides it.</summary>
+public sealed record ToolMatch(string Capability, string Tool, string? Description);
+
+/// <summary>A capability that could not be searched (e.g. it failed to connect), reported but non-fatal.</summary>
+public sealed record CapabilityError(string Capability, string Error);
+
+/// <summary>The result of <c>search_tools</c>: the matches across all capabilities, plus any that errored.</summary>
+public sealed record ToolSearchView(
+    string Query,
+    IReadOnlyList<ToolMatch> Matches,
+    IReadOnlyList<CapabilityError>? Errors = null);
+
 /// <summary>
 /// The result of <c>route</c>/<c>request</c>: which downstream tool ran and what it
 /// returned. <see cref="Text"/> is the flattened text content; <see cref="Structured"/>

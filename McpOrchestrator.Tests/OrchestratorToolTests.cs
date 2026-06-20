@@ -52,6 +52,37 @@ public sealed class OrchestratorToolTests
     }
 
     [Fact]
+    public async Task SearchTools_finds_matching_tools_across_capabilities()
+    {
+        var (catalog, conn) = Demo.StandardPair();
+        await using var owned = conn;
+
+        var root = Parse(await OrchestratorTool.SearchTools(conn, catalog, Log, "issue", CancellationToken.None));
+
+        var matches = root.GetProperty("matches").EnumerateArray()
+            .Select(m => (cap: m.GetProperty("capability").GetString(), tool: m.GetProperty("tool").GetString()))
+            .ToList();
+
+        Assert.Contains(("jira", "get_issue"), matches);
+        Assert.Contains(("jira", "search_issues"), matches);
+        Assert.DoesNotContain(matches, m => m.cap == "codegen"); // 'issue' shouldn't match generate_class
+    }
+
+    [Fact]
+    public async Task SearchTools_matches_all_space_separated_words()
+    {
+        var (catalog, conn) = Demo.StandardPair();
+        await using var owned = conn;
+
+        var root = Parse(await OrchestratorTool.SearchTools(conn, catalog, Log, "generate class", CancellationToken.None));
+
+        var tools = root.GetProperty("matches").EnumerateArray()
+            .Select(m => m.GetProperty("tool").GetString()).ToList();
+
+        Assert.Contains("generate_class", tools);
+    }
+
+    [Fact]
     public async Task DiscoverTools_unknown_capability_returns_structured_error()
     {
         var (catalog, conn) = Demo.StandardPair();
