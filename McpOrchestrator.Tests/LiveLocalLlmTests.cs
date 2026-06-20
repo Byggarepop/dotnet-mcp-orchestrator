@@ -48,4 +48,29 @@ public sealed class LiveLocalLlmTests
         Assert.True(plan.Arguments.ContainsKey("issueKey"), "expected the planner to fill issueKey");
         Assert.Equal("PROJ-1", ((JsonElement)plan.Arguments["issueKey"]!).GetString());
     }
+
+    [Fact]
+    public async Task Local_model_fixes_the_codegen_case_that_broke_the_heuristic()
+    {
+        if (!Enabled)
+        {
+            return; // disabled by default; see class summary.
+        }
+
+        await using var conn = Demo.Connections(Demo.Capability("codegen", "codegen"));
+        var tools = await conn.ListToolsAsync("codegen", CancellationToken.None);
+
+        var options = new LocalLlmOptions { Enabled = true };
+        var provisioner = new ModelProvisioner(options, NullLogger.Instance);
+        await using var llm = new LocalLlm(options, provisioner, NullLogger.Instance);
+        var planner = new LlmRoutePlanner(llm, new NullLogger<LlmRoutePlanner>(), options.ModelFileName);
+
+        var plan = await planner.PlanAsync(
+            "codegen", tools, "generate a class named Customer with fields Id, Name, Email", CancellationToken.None);
+        _output.WriteLine($"className = {JsonSerializer.Serialize(plan?.Arguments)}");
+
+        Assert.Equal("generate_class", plan!.Tool);
+        // The heuristic dumped the whole sentence here; the constrained model must extract just the name.
+        Assert.Equal("Customer", ((JsonElement)plan.Arguments["className"]!).GetString());
+    }
 }
