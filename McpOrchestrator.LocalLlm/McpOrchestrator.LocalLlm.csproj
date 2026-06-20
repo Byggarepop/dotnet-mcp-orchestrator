@@ -15,6 +15,10 @@
     <PackAsTool>true</PackAsTool>
     <ToolCommandName>mcp-orchestrator-llm</ToolCommandName>
     <PackageId>McpOrchestrator.LocalLlm</PackageId>
+    <!-- pack-all.ps1 sets PackRid to produce per-platform self-contained tool packages (id carries
+         the RID, e.g. McpOrchestrator.LocalLlm.win-x64). Derived per-project to avoid clashing with
+         the referenced core project's id. -->
+    <PackageId Condition="'$(PackRid)' != ''">$(PackageId).$(PackRid)</PackageId>
     <Version>0.1.0</Version>
     <Description>McpOrchestrator with an optional embedded local LLM (LLamaSharp) for natural-language routing of the `request` tool. Larger than the core package; the model is downloaded on first use.</Description>
     <PackageTags>mcp;model-context-protocol;orchestrator;llamasharp;local-llm;ai;agents</PackageTags>
