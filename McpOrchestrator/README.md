@@ -236,10 +236,20 @@ deliberately doesn't.)
 production layer — auth, multi-tenancy, rate limiting, observability — that this does **not**. This
 is a focused, self-hostable implementation, not an enterprise gateway.
 
+**On model-assisted routing:** using a model to route tool calls is **not unique** — some gateways
+do it via **embedding-based semantic routing** (e.g. liteLLM's MCP semantic tool filter, or a
+heuristic → embedding → LLM-classifier cascade). Those differ from this project in three ways: they
+**rank/select** a tool (they don't fill its arguments), they're usually **embedding** rather than
+generative, and the generative/classifier layer is typically a **remote API**. This project's
+`request` planner is a small **generative** model running **in-process and fully offline**, with
+**grammar-constrained** output that both **picks the tool and extracts its JSON arguments**. (For a
+local model as the *agent's* chat backend — Ollama/LM Studio — that's a separate, common thing and
+orthogonal to this.)
+
 **What's actually distinctive here:** it's **.NET / C# native** (most MCP tooling is TS/Python/Go),
-and it offers an **optional fully-local, no-API natural-language router** for the `request` path.
-The discovery/token-reduction pattern itself is not novel — the value is the .NET implementation,
-the no-shell typed-server integration, and the local-first option.
+and the **in-process, offline, grammar-constrained generative router** above is uncommon in this
+exact form. The discovery/token-reduction pattern itself is not novel — the value is the .NET
+implementation, the no-shell typed-server integration, and the local-first option.
 
 ---
 
