@@ -125,6 +125,29 @@ So adding the 50th MCP does **not** change the always-on cost. It adds ~100 toke
 `list_capabilities` call *when the agent makes one*, and that capability's full schemas load only if
 the agent actually inspects it — you never load every capability's schemas at once.
 
+### The flat surface is conditional: route *through* the orchestrator
+
+The four tools are fixed in the orchestrator's code — no agent file can change them. But the agent
+file's `tools:` line is a **grant list**, and a user can grant their agent more than four tools by
+referencing **other MCP servers directly**, alongside the orchestrator:
+
+```yaml
+tools: [ 'orchestrator/*', 'github/*', 'postgres/*' ]
+```
+
+The flat ~800-token property holds **only for what is reached through the orchestrator.** Any server
+listed directly has *its* tools injected as persistent definitions again — the very cost the
+orchestrator removes:
+
+| Agent file `tools:` | Always-loaded tool tokens |
+| --- | --- |
+| `[ 'orchestrator/*' ]` | ~800, flat — even with 50 capabilities behind it |
+| `[ 'orchestrator/*', 'github/*', 'postgres/*' ]` | ~800 **plus** every `github` + `postgres` tool schema |
+
+So put the long tail of tools **behind** the orchestrator (`orchestrator/*`), and only promote a
+tool to a direct `tools:` entry when avoiding its discovery round-trip is worth paying its always-on
+token cost. Mixing is allowed — it is a deliberate trade, not a free addition.
+
 **The one place cost grows linearly** is the `list_capabilities` listing (~100 tokens ×
 capabilities). It stays cheap into the dozens; to keep it small as you scale:
 
