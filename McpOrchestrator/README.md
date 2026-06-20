@@ -528,7 +528,7 @@ Each entry in `capabilities` is one downstream MCP server.
 
 - `${SOLUTION_DIR}` — the repository root (built in).
 - `${CONFIG_DIR}` — the folder containing the config file (built in).
-- any other `${NAME}` — resolved from a **process environment variable**; an unresolved token
+- any other `${NAME}` — resolved from a **process environment variable**; an unresolved placeholder
   is left as-is and logged.
 
 **Config location** is resolved in this order, first hit wins:
@@ -623,7 +623,7 @@ McpOrchestrator/                         Core tool package — lean, no LLM depe
   Orchestration/
     CapabilityDescriptor.cs              Config POCO: one downstream MCP (+ OrchestratorConfig root)
     ICapabilityCatalog.cs                The address book of downstream capabilities
-    CapabilityCatalog.cs                 Loads + validates the catalog from JSON; resolves ${VAR} tokens
+    CapabilityCatalog.cs                 Loads + validates the catalog from JSON; resolves ${VAR} placeholders
     IDownstreamConnectionManager.cs      Contract: list/call downstream tools (+ CapabilityNotFoundException)
     DownstreamConnectionManager.cs       MCP client: lazy connect, cache, timeouts, proxy, dispose
     IRoutePlanner.cs                     NL request → (tool, arguments) seam (RoutePlan)

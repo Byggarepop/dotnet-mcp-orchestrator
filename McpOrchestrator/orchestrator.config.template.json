@@ -9,7 +9,14 @@
 //      absolute path of your own config file. When that variable is set, the orchestrator loads
 //      that file instead of this one (so a tool upgrade never overwrites your settings).
 //
-// Tokens you can use in command / args / workingDirectory / env values:
+// Per-capability fields:
+//   "summary"      Required-ish. One line shown in list_capabilities; the agent uses it to pick
+//                  which capability to use.
+//   "instructions" OPTIONAL. A short when/why hint or convention (e.g. "use for sprint status").
+//                  You do NOT need to list the tools or their arguments here — the agent gets those
+//                  from the real downstream server via discover_tools. Leave it "" if not needed.
+//
+// Placeholders you can use in command / args / workingDirectory / env values:
 //   ${CONFIG_DIR}  -> the folder this config file lives in
 //   ${SOME_VAR}    -> the value of the SOME_VAR environment variable
 //
@@ -20,7 +27,7 @@
     {
       "name": "files",
       "summary": "Filesystem access — list, read and search files under an allowed folder.",
-      "instructions": "Call discover_tools first. Always pass an absolute path inside the allowed folder, e.g. read_text_file with {\"path\":\"C:/work/notes.txt\"}.",
+      "instructions": "Use when the task needs to read or search local files.",
       "enabled": false,
       "transport": "stdio",
       "command": "npx",
