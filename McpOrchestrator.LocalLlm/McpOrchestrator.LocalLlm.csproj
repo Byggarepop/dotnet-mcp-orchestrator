@@ -22,6 +22,11 @@
     <Version>0.1.0</Version>
     <Description>McpOrchestrator with an optional embedded local LLM (LLamaSharp) for natural-language routing of the `request` tool. Larger than the core package; the model is downloaded on first use.</Description>
     <PackageTags>mcp;model-context-protocol;orchestrator;llamasharp;local-llm;ai;agents</PackageTags>
+    <Authors>Byggarepop</Authors>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageProjectUrl>https://github.com/Byggarepop/dotnet-mcp-orchestrator</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/Byggarepop/dotnet-mcp-orchestrator</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
     <!-- LLamaSharp.Backend.Cpu's targets also mark the native libs as content, producing a
          redundant copy that collides on pack (NU5118) and isn't a referenceable lib assembly
          (NU5100). The authoritative native copy under tools/.../runtimes/ is correct (verified),

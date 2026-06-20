@@ -21,6 +21,11 @@
     <Version>0.1.0</Version>
     <Description>A .NET-native MCP orchestrator: route one agent through one server to many MCP servers, with progressive tool discovery to keep context small.</Description>
     <PackageTags>mcp;model-context-protocol;orchestrator;gateway;ai;agents</PackageTags>
+    <Authors>Byggarepop</Authors>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageProjectUrl>https://github.com/Byggarepop/dotnet-mcp-orchestrator</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/Byggarepop/dotnet-mcp-orchestrator</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
   </PropertyGroup>
 
   <ItemGroup>
