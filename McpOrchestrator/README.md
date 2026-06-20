@@ -363,6 +363,12 @@ Then register it by command name:
 }
 ```
 
+> **An installed tool ships a minimal *template* catalog**, not the repo's demo config (the demo
+> points at sample projects that don't exist once installed). So a fresh install starts with an
+> effectively empty catalog plus one disabled example. Point **`MCP_ORCHESTRATOR_CONFIG`** at your
+> own config file (recommended, so upgrades don't overwrite it), or edit the shipped
+> `orchestrator.config.json` next to the tool. See [Add a new downstream MCP](#add-a-new-downstream-mcp).
+
 ### Build everything with one script
 
 [`pack-all.ps1`](../pack-all.ps1) (repo root) produces every artifact into `./dist`, each named with

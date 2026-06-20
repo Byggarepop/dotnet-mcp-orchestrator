@@ -38,9 +38,17 @@
   </ItemGroup>
 
   <ItemGroup>
-    <!-- Ship the downstream catalog next to the assembly as a discovery fallback (the
-         in-repo source file is preferred when present; see CapabilityCatalog.ResolveConfigPath). -->
-    <Content Include="orchestrator.config.json" CopyToOutputDirectory="PreserveNewest" />
+    <!-- The repo-local demo config points at the sample DemoMcp and is used during development via
+         the in-repo source path (CapabilityCatalog.ResolveConfigPath). It is intentionally NOT
+         copied to output or packed — an installed tool would have no DemoMcp to launch. -->
+    <None Include="orchestrator.config.json" />
+    <!-- What ships instead: a minimal TEMPLATE, emitted as orchestrator.config.json next to the
+         assembly. A fresh install then starts with a clean (effectively empty) catalog plus an
+         editable example, rather than broken demo capabilities. Users normally point
+         MCP_ORCHESTRATOR_CONFIG at their own file. -->
+    <Content Include="orchestrator.config.template.json" CopyToOutputDirectory="PreserveNewest">
+      <TargetPath>orchestrator.config.json</TargetPath>
+    </Content>
   </ItemGroup>
 
   <ItemGroup>

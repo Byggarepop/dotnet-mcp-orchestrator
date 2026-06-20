@@ -1,0 +1,19 @@
+{
+  "//": "Template catalog shipped with an installed McpOrchestrator tool. Add one entry per",
+  "//1": "downstream MCP server you want to reach. The example below is disabled — copy it,",
+  "//2": "set \"enabled\": true, and adjust command/args/instructions.",
+  "//setup": "Either edit this file in place, or (recommended) set MCP_ORCHESTRATOR_CONFIG to the",
+  "//3": "absolute path of your own config file so upgrades don't overwrite it.",
+  "//tokens": "${CONFIG_DIR} = this file's folder; any other ${VAR} resolves from an environment variable.",
+  "capabilities": [
+    {
+      "name": "example",
+      "summary": "Example downstream MCP — replace with a real one.",
+      "instructions": "Describe when to use this capability and exactly what arguments to pass (e.g. 'always include the issue key as {\"issueKey\":\"PROJ-123\"}').",
+      "enabled": false,
+      "transport": "stdio",
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-filesystem", "${CONFIG_DIR}"]
+    }
+  ]
+}
