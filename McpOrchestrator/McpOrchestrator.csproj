@@ -9,8 +9,7 @@
     <AssemblyName>McpOrchestrator</AssemblyName>
 
     <!-- Packable as a .NET tool (install globally, then point .mcp.json at the
-         `mcp-orchestrator` command). Lean and framework-dependent; the optional local LLM
-         lives in the separate McpOrchestrator.LocalLlm package. -->
+         `mcp-orchestrator` command). Framework-dependent and lightweight. -->
     <PackAsTool>true</PackAsTool>
     <ToolCommandName>mcp-orchestrator</ToolCommandName>
     <PackageId>McpOrchestrator</PackageId>
