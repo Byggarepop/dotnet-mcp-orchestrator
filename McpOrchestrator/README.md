@@ -541,6 +541,29 @@ Each entry in `capabilities` is one downstream MCP server.
 A missing or invalid config is non-fatal: the server starts with **zero capabilities** and logs
 a warning/error rather than crashing.
 
+### Setting environment variables (`MCP_ORCHESTRATOR_CONFIG` and the rest)
+
+All of the orchestrator's environment variables are read from the process the host launches, so the
+simplest place to set them is the **`env` block of the server entry** in your host config — scoped
+to the orchestrator, explicit, and no machine-wide changes:
+
+```json
+{
+  "servers": {
+    "orchestrator": {
+      "type": "stdio",
+      "command": "mcp-orchestrator",
+      "env": { "MCP_ORCHESTRATOR_CONFIG": "C:/Users/you/my-orchestrator.config.json" }
+    }
+  }
+}
+```
+
+The same block is where you'd set `MCP_ORCHESTRATOR_PLANNER`, the `MCP_ORCHESTRATOR_LLM_*` options,
+or `MCP_ORCHESTRATOR_DEBUG`. Alternatively set them as OS environment variables — **user-level**
+(e.g. Windows `setx`, or a shell rc file) or **machine-level** (needs admin) — but then **restart
+the MCP host**, since a child process captures its environment at launch.
+
 ---
 
 ## Testing
