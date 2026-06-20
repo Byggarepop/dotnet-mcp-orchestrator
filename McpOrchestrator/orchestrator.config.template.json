@@ -1,15 +1,22 @@
+// McpOrchestrator catalog — each entry under "capabilities" is one downstream MCP server.
+//
+// Getting started:
+//   1. Add a capability for each MCP server you want the agent to reach, and set "enabled": true.
+//   2. Or (recommended) leave this file alone and set the MCP_ORCHESTRATOR_CONFIG environment
+//      variable to the path of your own config file, so tool upgrades don't overwrite it.
+//
+// Tokens you can use in command / args / workingDirectory / env values:
+//   ${CONFIG_DIR}   -> the folder this config file lives in
+//   ${SOME_VAR}     -> the value of the SOME_VAR environment variable
+//
+// The single example below is DISABLED. As written it would launch the official filesystem MCP
+// server (via npx) scoped to this file's folder. Enable it, or replace it with your own server.
 {
-  "//": "Template catalog shipped with an installed McpOrchestrator tool. Add one entry per",
-  "//1": "downstream MCP server you want to reach. The example below is disabled — copy it,",
-  "//2": "set \"enabled\": true, and adjust command/args/instructions.",
-  "//setup": "Either edit this file in place, or (recommended) set MCP_ORCHESTRATOR_CONFIG to the",
-  "//3": "absolute path of your own config file so upgrades don't overwrite it.",
-  "//tokens": "${CONFIG_DIR} = this file's folder; any other ${VAR} resolves from an environment variable.",
   "capabilities": [
     {
-      "name": "example",
-      "summary": "Example downstream MCP — replace with a real one.",
-      "instructions": "Describe when to use this capability and exactly what arguments to pass (e.g. 'always include the issue key as {\"issueKey\":\"PROJ-123\"}').",
+      "name": "files",
+      "summary": "Filesystem access — list, read and search files under an allowed folder.",
+      "instructions": "Call discover_tools first. Always pass an absolute path inside the allowed folder, e.g. read_text_file with {\"path\":\"C:/work/notes.txt\"}.",
       "enabled": false,
       "transport": "stdio",
       "command": "npx",

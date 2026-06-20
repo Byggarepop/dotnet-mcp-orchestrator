@@ -104,6 +104,29 @@ public sealed class CapabilityCatalogTests
     }
 
     [Fact]
+    public void Load_parses_the_shipped_template_with_real_comments()
+    {
+        // The installed-tool template uses real // comments — verify the loader (JsonCommentHandling
+        // .Skip) parses it cleanly and yields an empty catalog (its one example is disabled).
+        var templatePath = Path.Combine(Demo.SolutionDir, "McpOrchestrator", "orchestrator.config.template.json");
+        Assert.True(File.Exists(templatePath), $"template not found at {templatePath}");
+
+        var previousConfig = Environment.GetEnvironmentVariable("MCP_ORCHESTRATOR_CONFIG");
+        try
+        {
+            Environment.SetEnvironmentVariable("MCP_ORCHESTRATOR_CONFIG", templatePath);
+
+            var catalog = CapabilityCatalog.Load(Path.GetDirectoryName(templatePath)!, NullLogger.Instance);
+
+            Assert.Empty(catalog.Capabilities); // the example is disabled, so nothing is enabled
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("MCP_ORCHESTRATOR_CONFIG", previousConfig);
+        }
+    }
+
+    [Fact]
     public void Load_invalid_json_returns_empty_catalog_without_throwing()
     {
         var dir = Directory.CreateTempSubdirectory("mcp-orch-badjson");
