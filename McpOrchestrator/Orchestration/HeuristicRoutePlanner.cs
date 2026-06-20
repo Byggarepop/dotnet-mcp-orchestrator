@@ -6,10 +6,14 @@ using ModelContextProtocol.Client;
 namespace McpOrchestrator.Orchestration;
 
 /// <summary>
-/// A dependency-free <see cref="IRoutePlanner"/> that picks a tool by keyword overlap
-/// and fills arguments from the tool's input schema using simple extraction rules. It
-/// is deliberately modest — enough to demo the <c>request</c> flow end-to-end without a
-/// model. Swap it for an LLM-backed planner for production-quality routing.
+/// The default, dependency-free <see cref="IRoutePlanner"/> — used by the <c>request</c> tool when
+/// no LLM planner is configured. It picks a tool by <b>keyword overlap</b> with the request and
+/// fills arguments with a couple of <b>regex/string rules</b>. It has <b>no understanding of
+/// language</b>: it works for a trivial request (one that literally contains the argument value,
+/// like an explicit <c>PROJ-123</c>) but mangles anything that needs interpreting. That is why it is
+/// only a best-effort default — swap in an LLM-backed planner (the embedded local model, or e.g.
+/// Ollama) to make <c>request</c> reliable, or just prefer the <c>route</c> tool, which needs no
+/// planner at all. See <see cref="IRoutePlanner"/> for the full rationale.
 /// </summary>
 public sealed partial class HeuristicRoutePlanner : IRoutePlanner
 {

@@ -32,8 +32,7 @@ public static class OrchestratorHost
         // Orchestration services:
         //  - ICapabilityCatalog          : the address book of downstream MCPs (from config).
         //  - IDownstreamConnectionManager: connects to / proxies calls to those MCPs (MCP client).
-        //  - IRoutePlanner               : natural-language need -> concrete tool call (the seam a
-        //                                  host may override via configurePlanner).
+        //  - IRoutePlanner               : interprets a natural-language `request` into a tool call.
         var contentRoot = builder.Environment.ContentRootPath;
         builder.Services.AddSingleton<ICapabilityCatalog>(sp =>
             CapabilityCatalog.Load(
@@ -41,15 +40,25 @@ public static class OrchestratorHost
                 sp.GetRequiredService<ILoggerFactory>().CreateLogger<CapabilityCatalog>()));
         builder.Services.AddSingleton<IDownstreamConnectionManager, DownstreamConnectionManager>();
 
-        // The heuristic is always available — both as the default planner and as the fallback an
-        // overriding planner (e.g. the local LLM) can delegate to.
+        // --- Route planner selection (only the `request` tool uses this; `route` needs no planner;
+        //     see IRoutePlanner for the full why). There are two roles a planner can play here:
+        //
+        //   "default"  = the IRoutePlanner the `request` tool actually resolves and calls.
+        //   "fallback" = what an LLM planner delegates to when the model isn't ready or errors.
+        //
+        // The heuristic (keyword matching, no LLM) is registered as a concrete type so it can serve
+        // EITHER role. The core host uses it directly as the default; the LLM host (which passes
+        // configurePlanner) makes the LLM the default and wires the heuristic in behind it as the
+        // fallback. So the heuristic is always available, and the system never depends on an LLM.
         builder.Services.AddSingleton<HeuristicRoutePlanner>();
         if (configurePlanner is not null)
         {
+            // An overriding host (e.g. McpOrchestrator.LocalLlm) owns the IRoutePlanner registration.
             configurePlanner(builder.Services);
         }
         else
         {
+            // Default: the `request` tool is served by the dependency-free heuristic.
             builder.Services.AddSingleton<IRoutePlanner>(sp => sp.GetRequiredService<HeuristicRoutePlanner>());
         }
 
