@@ -1,16 +1,20 @@
 // McpOrchestrator catalog — each entry under "capabilities" is one downstream MCP server.
+// Full configuration reference:
+//   https://github.com/Byggarepop/dotnet-mcp-orchestrator#configuration-reference
 //
-// Getting started:
-//   1. Add a capability for each MCP server you want the agent to reach, and set "enabled": true.
-//   2. Or (recommended) leave this file alone and set the MCP_ORCHESTRATOR_CONFIG environment
-//      variable to the path of your own config file, so tool upgrades don't overwrite it.
+// Two ways to configure:
+//   A) Edit THIS file — add a capability for each MCP server you want the agent to reach, and
+//      set "enabled": true.
+//   B) Keep your config elsewhere — set the environment variable MCP_ORCHESTRATOR_CONFIG to the
+//      absolute path of your own config file. When that variable is set, the orchestrator loads
+//      that file instead of this one (so a tool upgrade never overwrites your settings).
 //
 // Tokens you can use in command / args / workingDirectory / env values:
-//   ${CONFIG_DIR}   -> the folder this config file lives in
-//   ${SOME_VAR}     -> the value of the SOME_VAR environment variable
+//   ${CONFIG_DIR}  -> the folder this config file lives in
+//   ${SOME_VAR}    -> the value of the SOME_VAR environment variable
 //
-// The single example below is DISABLED. As written it would launch the official filesystem MCP
-// server (via npx) scoped to this file's folder. Enable it, or replace it with your own server.
+// The single example below is DISABLED. As written it launches the official filesystem MCP server
+// (via npx) scoped to this file's folder. Enable it, or replace it with your own server.
 {
   "capabilities": [
     {
