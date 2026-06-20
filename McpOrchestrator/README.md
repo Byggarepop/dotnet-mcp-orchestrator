@@ -164,6 +164,37 @@ The trade-off is **tokens for round-trips**: discovery (`list_capabilities` → 
 thousands. For "many MCPs on a modest context budget," that is strongly favorable — which is the
 reason this architecture exists.
 
+### Discovered tools are paid once, then discounted (prompt caching)
+
+A reasonable worry: native MCP tool definitions sit in the cached request prefix and get the
+"session discount" (prompt caching) every turn, whereas a `discover_tools` payload arrives *mid*
+conversation. Does loading tools mid-session lose that discount?
+
+**No — verified empirically.** Prompt caching is prefix-based and conversations are append-only, so
+once a `discover_tools` result is in the history it becomes part of the cached prefix: it is a
+one-time **cache write** on the turn it appears, then a **cache read** (~10% price) on every later
+turn — the same discount native tool definitions get, just starting from the turn it was discovered
+and only for the capabilities actually used.
+
+This was confirmed from a live session's own `usage` telemetry (each turn logs
+`cache_creation_input_tokens` and `cache_read_input_tokens`). A representative stretch:
+
+```
+turn | new_input | cache_WRITE (new delta) | cache_READ (prefix, from cache)
+ 716 |     2     |        98               |   332,850
+ 718 |     2     |       610               |   332,948
+ 720 |     2     |       987               |   333,558
+ 723 |     2     |     2,255               |   334,545
+```
+
+Each turn writes only the **new delta** (the prior reply + new message + any tool results) and
+**reads the entire prior prefix from cache** — and that read pool grows as the conversation does. A
+discovered-tools block is exactly part of one turn's small `cache_write`, then rides along in
+`cache_read` thereafter. So the net effect versus connecting MCPs directly: you avoid caching and
+re-reading the *entire* tool catalog every turn, and instead pay a small one-time write per
+capability you actually discover. (The same ~5-minute cache TTL applies to both; a gap longer than
+that re-writes the prefix regardless of approach.)
+
 ---
 
 ## Prerequisites
