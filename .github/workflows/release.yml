@@ -1,0 +1,111 @@
+name: release
+
+# On a version tag (e.g. v0.2.0): build + test, produce the Native-AOT binaries per OS, and create
+# a GitHub Release with those binaries + the tool .nupkg attached.
+#
+# NuGet publishing is wired up the same way tokensaver does it (API key in a secret named NUGET),
+# but it is OFF by default — nothing pushes to NuGet until you opt in:
+#   1. add a nuget.org API key as the repo secret  NUGET
+#   2. set the repo variable  PUBLISH_NUGET = true   (Settings -> Secrets and variables -> Actions)
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write   # to create the GitHub Release
+
+jobs:
+  build:
+    name: build ${{ matrix.rid }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: windows-latest, rid: win-x64, exe: McpOrchestrator.exe }
+          - { os: ubuntu-latest, rid: linux-x64, exe: McpOrchestrator }
+          - { os: macos-latest, rid: osx-arm64, exe: McpOrchestrator }
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Install Native AOT prerequisites (Linux)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y clang zlib1g-dev
+
+      - name: Version from tag
+        shell: bash
+        run: echo "VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"
+
+      - name: Build and test
+        run: dotnet test McpOrchestrator.slnx -c Release
+
+      - name: Native AOT publish
+        run: dotnet publish McpOrchestrator/McpOrchestrator.csproj -c Release -r ${{ matrix.rid }} -p:PublishAot=true -p:Version=${{ env.VERSION }} -o out
+
+      - name: Smoke-test the native binary
+        shell: bash
+        env:
+          MCP_ORCHESTRATOR_COMMAND: ${{ github.workspace }}/out/${{ matrix.exe }}
+        run: |
+          chmod +x "out/${{ matrix.exe }}" || true
+          dotnet run --project McpOrchestrator.SmokeTest -c Release -- --check-tools
+
+      - name: Upload native build
+        uses: actions/upload-artifact@v7
+        with:
+          name: native-${{ matrix.rid }}
+          path: out/*
+          if-no-files-found: error
+
+  release:
+    name: release
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Version from tag
+        run: echo "VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"
+
+      - name: Pack the tool package
+        run: dotnet pack McpOrchestrator/McpOrchestrator.csproj -c Release -p:Version=${{ env.VERSION }} -o nupkg
+
+      # OFF unless you opt in (see header): pushes to nuget.org only when PUBLISH_NUGET == 'true'.
+      - name: Push to NuGet
+        if: vars.PUBLISH_NUGET == 'true'
+        run: dotnet nuget push nupkg/*.nupkg --api-key ${{ secrets.NUGET }} --source https://api.nuget.org/v3/index.json --skip-duplicate
+
+      - name: Download native builds
+        uses: actions/download-artifact@v8
+        with:
+          path: native
+
+      - name: Zip native binaries + checksums
+        run: |
+          mkdir -p release
+          for dir in native/native-*; do
+            rid="${dir#native/native-}"
+            (cd "$dir" && zip -r "$GITHUB_WORKSPACE/release/McpOrchestrator-$VERSION-$rid.zip" .)
+          done
+          # SHA256SUMS is consumed by the binary's opt-in self-updater to verify downloads.
+          (cd release && sha256sum *.zip > SHA256SUMS)
+          ls -la release && cat release/SHA256SUMS
+
+      - name: Release notes from CHANGELOG
+        run: |
+          awk "/^## \[$VERSION\]/{f=1;next} f&&/^## \[/{exit} f{print}" CHANGELOG.md > notes.md
+          if [ ! -s notes.md ]; then echo "Release $VERSION" > notes.md; fi
+          cat notes.md
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" --title "$GITHUB_REF_NAME" --notes-file notes.md release/*.zip release/SHA256SUMS nupkg/*.nupkg

@@ -402,6 +402,28 @@ Two prerequisites and one gotcha:
   runners), unlike the framework-dependent and JIT self-contained artifacts above which build any RID
   from any host.
 
+### Auto-update (Native-AOT binary, opt-in)
+
+The `dotnet tool` install updates via `dotnet tool update`; the standalone native binary has no
+package manager, so it can update itself. Set **`MCP_ORCHESTRATOR_AUTOUPDATE=1`** to enable it
+(off by default).
+
+When enabled, on startup the binary checks this repo's **latest GitHub Release** (at most once per
+12 hours), and if it's newer:
+
+1. downloads the asset for the current platform (`McpOrchestrator-<version>-<rid>.zip`),
+2. **verifies it against the release's `SHA256SUMS`** (a mismatch aborts the update),
+3. swaps the on-disk binary so the **next launch** runs the new version.
+
+It **never restarts the running server**: this is an MCP server over stdio, a child process whose
+pipes the host owns, so a self-restart would drop the session. Instead the host — which relaunches
+the server each session — picks up the new binary on its next start. The check runs in the
+background and every step is best-effort: a failed update is logged to stderr and never disrupts the
+running server.
+
+> Auto-update downloads and runs code, so it's opt-in and checksum-verified. Point it at a fork with
+> `MCP_ORCHESTRATOR_UPDATE_REPO=owner/repo` if you publish your own builds.
+
 ---
 
 ## Add a new downstream MCP
