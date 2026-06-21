@@ -26,9 +26,9 @@ jobs:
             exe: McpOrchestrator
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/setup-dotnet@v5
         with:
           dotnet-version: '10.0.x'
 
@@ -56,7 +56,7 @@ jobs:
         run: dotnet run --project McpOrchestrator.SmokeTest -c Release -- --check-tools
 
       - name: Upload native binary
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: McpOrchestrator-${{ matrix.rid }}
           path: aot/${{ matrix.exe }}
