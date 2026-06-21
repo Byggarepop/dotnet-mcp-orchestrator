@@ -9,6 +9,12 @@ uses it as the GitHub Release notes — so keep an entry per released version.
 
 ## [Unreleased]
 
+### Added
+- Opt-in self-update for the Native-AOT binary (`MCP_ORCHESTRATOR_AUTOUPDATE=1`): on startup it
+  checks the latest GitHub Release, verifies the download against `SHA256SUMS`, and stages the new
+  binary so the next launch runs it — without ever restarting the live MCP session.
+- The release workflow now publishes a `SHA256SUMS` asset for the native binaries.
+
 ## [0.1.0] - 2026-06-21
 
 ### Added

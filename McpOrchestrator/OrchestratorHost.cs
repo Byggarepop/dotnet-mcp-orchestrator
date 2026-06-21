@@ -41,7 +41,18 @@ public static class OrchestratorHost
             // rather than the reflection-based WithToolsFromAssembly.
             .WithTools<Tools.OrchestratorTool>();
 
-        await builder.Build().RunAsync();
+        var app = builder.Build();
+
+        // Opt-in self-update of the native binary (see SelfUpdater). Runs in the background so it
+        // never delays startup, and applies to the *next* launch — the current session is untouched.
+        if (Update.SelfUpdater.IsEnabled)
+        {
+            Update.SelfUpdater.CleanupOldBinary();
+            var updateLogger = app.Services.GetRequiredService<ILoggerFactory>().CreateLogger("SelfUpdater");
+            _ = Task.Run(() => Update.SelfUpdater.CheckAndStageAsync(updateLogger, CancellationToken.None));
+        }
+
+        await app.RunAsync();
     }
 
     /// <summary>

@@ -88,14 +88,16 @@ jobs:
         with:
           path: native
 
-      - name: Zip native binaries per platform
+      - name: Zip native binaries + checksums
         run: |
           mkdir -p release
           for dir in native/native-*; do
             rid="${dir#native/native-}"
             (cd "$dir" && zip -r "$GITHUB_WORKSPACE/release/McpOrchestrator-$VERSION-$rid.zip" .)
           done
-          ls -la release
+          # SHA256SUMS is consumed by the binary's opt-in self-updater to verify downloads.
+          (cd release && sha256sum *.zip > SHA256SUMS)
+          ls -la release && cat release/SHA256SUMS
 
       - name: Release notes from CHANGELOG
         run: |
@@ -106,4 +108,4 @@ jobs:
       - name: Create GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create "$GITHUB_REF_NAME" --title "$GITHUB_REF_NAME" --notes-file notes.md release/*.zip nupkg/*.nupkg
+        run: gh release create "$GITHUB_REF_NAME" --title "$GITHUB_REF_NAME" --notes-file notes.md release/*.zip release/SHA256SUMS nupkg/*.nupkg
