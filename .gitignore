@@ -15,3 +15,7 @@ dist/
 # Local Native-AOT publish output
 aot/
 _aot/
+
+# Local MCP client registration — contains machine-specific absolute paths
+.mcp.json
+.vscode/mcp.json
