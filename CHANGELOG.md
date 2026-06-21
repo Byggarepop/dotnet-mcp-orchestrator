@@ -10,6 +10,8 @@ uses it as the GitHub Release notes — so keep an entry per released version.
 ## [Unreleased]
 
 ### Added
+- The NuGet package ships the root README as its nuget.org landing page.
+- Both READMEs link to GitHub Releases for downloading the prebuilt Native-AOT binaries.
 - File logging: the stderr log is mirrored to `~/.dotnet-orchestrator-mcp/orchestrator.log`
   (folder auto-created, ~10 MB rotation). Override the directory with `MCP_ORCHESTRATOR_LOG_DIR`,
   or disable with `MCP_ORCHESTRATOR_LOG_DIR=off`.

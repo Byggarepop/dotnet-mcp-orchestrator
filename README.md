@@ -15,7 +15,7 @@ you connect. It's a **pure relay** — the orchestrator never interprets the age
 > aggregation they can read and extend in C#. It does not include the enterprise layer (auth,
 > multi-tenancy, rate limiting) that gateways like Kong or Envoy provide.
 
-👉 **Full documentation:** [`McpOrchestrator/README.md`](McpOrchestrator/README.md) — how it
+👉 **Full documentation:** [`McpOrchestrator/README.md`](https://github.com/Byggarepop/dotnet-mcp-orchestrator/blob/main/McpOrchestrator/README.md) — how it
 works, setup, adding new MCPs, configuration reference, testing, and troubleshooting.
 
 ## Quick start
@@ -40,7 +40,7 @@ dotnet tool install --global McpOrchestrator
 **B. As a self-contained Native-AOT binary** — a single executable, no .NET runtime required.
 Download it from the [GitHub Releases](https://github.com/Byggarepop/dotnet-mcp-orchestrator/releases)
 (`McpOrchestrator-<version>-<rid>.zip`) and unzip, or
-[build it yourself](McpOrchestrator/README.md#native-aot-smallest-self-contained-binary-fastest-startup).
+[build it yourself](https://github.com/Byggarepop/dotnet-mcp-orchestrator/blob/main/McpOrchestrator/README.md#native-aot-smallest-self-contained-binary-fastest-startup).
 You then use the absolute path to the binary as the command.
 
 ### 2. Add the orchestrator to your host config (`.mcp.json` / `.vscode/mcp.json`)
@@ -109,7 +109,7 @@ The agent now sees the three meta-tools and the flow is
 > **Notes.** `instructions` is optional (a usage hint surfaced to the agent — leave it `""`).
 > `env`/`workingDirectory` are per-capability and optional. The config file supports `//` comments.
 > Logs are mirrored to `~/.dotnet-orchestrator-mcp/orchestrator.log`. See the
-> [full documentation](McpOrchestrator/README.md) for every field, packaging, and troubleshooting.
+> [full documentation](https://github.com/Byggarepop/dotnet-mcp-orchestrator/blob/main/McpOrchestrator/README.md) for every field, packaging, and troubleshooting.
 
 ## Projects
 
@@ -124,4 +124,4 @@ The agent now sees the three meta-tools and the flow is
 
 `list_capabilities` → `discover_tools` → **`route`** (you pick the tool and fill the arguments). The
 orchestrator is a **courier, not an interpreter**: it forwards exactly what the agent sends — the
-agent does the thinking. See the [full docs](McpOrchestrator/README.md) for details.
+agent does the thinking. See the [full docs](https://github.com/Byggarepop/dotnet-mcp-orchestrator/blob/main/McpOrchestrator/README.md) for details.

@@ -29,6 +29,9 @@
     <PackageProjectUrl>https://github.com/Byggarepop/dotnet-mcp-orchestrator</PackageProjectUrl>
     <RepositoryUrl>https://github.com/Byggarepop/dotnet-mcp-orchestrator</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
+    <!-- The repo's root README becomes the nuget.org landing page (its relative doc links are
+         absolute GitHub URLs so they resolve there). -->
+    <PackageReadmeFile>README.md</PackageReadmeFile>
   </PropertyGroup>
 
   <!-- Size/perf knobs that apply ONLY to a Native-AOT publish (pass -p:PublishAot=true). They are
@@ -40,6 +43,11 @@
     <OptimizationPreference>Size</OptimizationPreference>
     <InvariantGlobalization>true</InvariantGlobalization>
   </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Ship the root README as the package README shown on nuget.org. -->
+    <None Include="..\README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
 
   <ItemGroup>
     <!-- ModelContextProtocol = server + hosting integration. .Core (transitive, pinned

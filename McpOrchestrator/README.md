@@ -374,7 +374,12 @@ installs that don't depend on the exact runtime, **tier 3** for zero-install on 
 
 The orchestrator is **Native-AOT compatible** (`IsAotCompatible` keeps the analyzer on, so the build
 stays reflection-free). A native publish produces a **single ~10 MB executable** that needs **no
-.NET runtime** and starts faster than the JIT self-contained build:
+.NET runtime** and starts faster than the JIT self-contained build.
+
+**Download a prebuilt binary** for your platform from the
+[GitHub Releases](https://github.com/Byggarepop/dotnet-mcp-orchestrator/releases) — each release
+attaches `McpOrchestrator-<version>-<rid>.zip` (win-x64, linux-x64, osx-arm64) plus a `SHA256SUMS`
+to verify them. Or build it yourself:
 
 ```bash
 dotnet publish McpOrchestrator/McpOrchestrator.csproj -c Release -r win-x64 -p:PublishAot=true
