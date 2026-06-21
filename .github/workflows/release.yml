@@ -97,7 +97,13 @@ jobs:
           done
           ls -la release
 
+      - name: Release notes from CHANGELOG
+        run: |
+          awk "/^## \[$VERSION\]/{f=1;next} f&&/^## \[/{exit} f{print}" CHANGELOG.md > notes.md
+          if [ ! -s notes.md ]; then echo "Release $VERSION" > notes.md; fi
+          cat notes.md
+
       - name: Create GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create "$GITHUB_REF_NAME" --title "$GITHUB_REF_NAME" --generate-notes release/*.zip nupkg/*.nupkg
+        run: gh release create "$GITHUB_REF_NAME" --title "$GITHUB_REF_NAME" --notes-file notes.md release/*.zip nupkg/*.nupkg
