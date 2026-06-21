@@ -1,12 +1,11 @@
 name: native-aot
 
-# Builds the Native-AOT binary for each OS and *verifies it works* (not just compiles):
-# the test suite gates the logic per-OS, then the published native binary is smoke-tested. AOT is
-# not cross-compilable, so each binary is built on its own OS runner. Run on demand, or on a tag.
+# On-demand verification that the Native-AOT binary *works* (not just compiles) on each OS: the
+# test suite gates the logic per-OS, then the published native binary is smoke-tested. AOT is not
+# cross-compilable, so each binary is built on its own OS runner. Tag-driven releases live in
+# release.yml; run this one manually to sanity-check AOT before tagging.
 on:
   workflow_dispatch:
-  push:
-    tags: ['v*']
 
 jobs:
   build:
