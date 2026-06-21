@@ -4,20 +4,30 @@ using System.Text.Json.Serialization;
 
 namespace McpOrchestrator.Orchestration;
 
-/// <summary>Shared JSON options for the structured strings the orchestrator returns to the agent.</summary>
+/// <summary>Serializes the structured strings the orchestrator returns to the agent.</summary>
 public static class OrchestratorJson
 {
-    /// <summary>Indented, camelCase, null-skipping — readable for a model and easy to parse.</summary>
-    public static readonly JsonSerializerOptions Options = new()
-    {
-        WriteIndented = true,
-        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
-    };
-
-    /// <summary>Serializes a value with <see cref="Options"/>.</summary>
-    public static string Serialize<T>(T value) => JsonSerializer.Serialize(value, Options);
+    /// <summary>
+    /// Serializes a value via the source-generated context (Native-AOT safe). The value's static
+    /// type must be registered on <see cref="OrchestratorJsonContext"/>.
+    /// </summary>
+    public static string Serialize<T>(T value) =>
+        JsonSerializer.Serialize(value, typeof(T), OrchestratorJsonContext.Default);
 }
+
+/// <summary>
+/// Source-generation context for everything the orchestrator writes back to the agent. Indented +
+/// camelCase + null-skipping, matching what the agent expects; AOT/trim-safe (no reflection).
+/// </summary>
+[JsonSourceGenerationOptions(
+    WriteIndented = true,
+    PropertyNamingPolicy = JsonKnownNamingPolicy.CamelCase,
+    DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull)]
+[JsonSerializable(typeof(List<CapabilityView>))]
+[JsonSerializable(typeof(DiscoverView))]
+[JsonSerializable(typeof(RouteView))]
+[JsonSerializable(typeof(ErrorView))]
+internal sealed partial class OrchestratorJsonContext : JsonSerializerContext;
 
 /// <summary>One capability as advertised to the model by <c>list_capabilities</c>.</summary>
 public sealed record CapabilityView(string Name, string Summary, string Instructions);

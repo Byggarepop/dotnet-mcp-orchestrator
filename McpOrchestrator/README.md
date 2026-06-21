@@ -370,6 +370,38 @@ So pick by audience: **tier 1** for developers (smallest), **tier 2** for unifor
 installs that don't depend on the exact runtime, **tier 3** for zero-install on a machine without
 .NET.
 
+### Native AOT (smallest self-contained binary, fastest startup)
+
+The orchestrator is **Native-AOT compatible** (`IsAotCompatible` keeps the analyzer on, so the build
+stays reflection-free). A native publish produces a **single ~10 MB executable** that needs **no
+.NET runtime** and starts faster than the JIT self-contained build:
+
+```bash
+dotnet publish McpOrchestrator/McpOrchestrator.csproj -c Release -r win-x64 -p:PublishAot=true
+```
+
+The `PublishAot` build applies size-optimizing settings automatically (`OptimizationPreference=Size`,
+`InvariantGlobalization`) — but only under that flag, since `PublishAot` is incompatible with the
+`PackAsTool` package, so the normal build and tool pack are unaffected.
+
+Two prerequisites and one gotcha:
+
+- Install the **"Desktop development with C++"** workload (the MSVC linker + Windows SDK). See
+  <https://aka.ms/nativeaot-prerequisites>.
+- **`vswhere.exe` must be on `PATH`** during the publish, or the link step fails with a mangled
+  `'vswhere.exe' is not recognized` error. It lives in `C:\Program Files (x86)\Microsoft Visual
+  Studio\Installer`. Either run from a **Developer PowerShell/Command Prompt for VS**, or prepend
+  that folder to `PATH` first:
+
+  ```powershell
+  $env:PATH = "C:\Program Files (x86)\Microsoft Visual Studio\Installer;$env:PATH"
+  dotnet publish McpOrchestrator/McpOrchestrator.csproj -c Release -r win-x64 -p:PublishAot=true
+  ```
+
+- Native AOT is **not cross-compilable** — build each OS's binary **on that OS** (e.g. via per-OS CI
+  runners), unlike the framework-dependent and JIT self-contained artifacts above which build any RID
+  from any host.
+
 ---
 
 ## Add a new downstream MCP

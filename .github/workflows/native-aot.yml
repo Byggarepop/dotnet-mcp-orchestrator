@@ -1,0 +1,63 @@
+name: native-aot
+
+# Builds the Native-AOT binary for each OS and *verifies it works* (not just compiles):
+# the test suite gates the logic per-OS, then the published native binary is smoke-tested. AOT is
+# not cross-compilable, so each binary is built on its own OS runner. Run on demand, or on a tag.
+on:
+  workflow_dispatch:
+  push:
+    tags: ['v*']
+
+jobs:
+  build:
+    name: ${{ matrix.rid }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            rid: win-x64
+            exe: McpOrchestrator.exe
+          - os: ubuntu-latest
+            rid: linux-x64
+            exe: McpOrchestrator
+          - os: macos-latest
+            rid: osx-arm64
+            exe: McpOrchestrator
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      # Native AOT on Linux needs clang + zlib headers (Windows/macOS runners already have a linker).
+      - name: Install Native AOT prerequisites (Linux)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y clang zlib1g-dev
+
+      # Gate the logic on this OS (the integration tests spawn the demo server as a real process).
+      - name: Build and test
+        run: dotnet test McpOrchestrator.slnx -c Release
+
+      - name: Native AOT publish
+        run: dotnet publish McpOrchestrator/McpOrchestrator.csproj -c Release -r ${{ matrix.rid }} -p:PublishAot=true -o aot
+
+      - name: Make binary executable (Unix)
+        if: runner.os != 'Windows'
+        run: chmod +x "aot/${{ matrix.exe }}"
+
+      # Prove the *native* binary runs: it must serve the 3 tools and serialize list_capabilities.
+      - name: Smoke-test the native binary
+        shell: bash
+        env:
+          MCP_ORCHESTRATOR_COMMAND: ${{ github.workspace }}/aot/${{ matrix.exe }}
+        run: dotnet run --project McpOrchestrator.SmokeTest -c Release -- --check-tools
+
+      - name: Upload native binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: McpOrchestrator-${{ matrix.rid }}
+          path: aot/${{ matrix.exe }}
+          if-no-files-found: error
