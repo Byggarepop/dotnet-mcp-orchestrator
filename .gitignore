@@ -11,3 +11,7 @@ nupkg/
 
 # Release artifacts from pack-all.ps1
 dist/
+
+# Local Native-AOT publish output
+aot/
+_aot/

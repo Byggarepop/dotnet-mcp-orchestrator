@@ -130,7 +130,7 @@ public sealed class OrchestratorTool
         IsError = result.IsError ?? false,
         Text = ToolPayloads.FlattenText(result),
         Structured = result.StructuredContent,
-        Arguments = JsonSerializer.SerializeToNode(args, OrchestratorJson.Options),
+        Arguments = ToolPayloads.ArgumentsToNode(args),
     };
 
     /// <summary>

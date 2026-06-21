@@ -21,11 +21,17 @@ Console.WriteLine($"Orchestrator : {orchestratorProject}");
 // the default path) — real users set MCP_ORCHESTRATOR_CONFIG to their own file the same way.
 var sampleConfig = Path.Combine(solutionDir, "McpOrchestrator", "orchestrator.config.sample.json");
 
+// By default the demo runs the orchestrator via `dotnet run`. Set MCP_ORCHESTRATOR_COMMAND to a
+// prebuilt orchestrator binary (e.g. a Native-AOT publish) to drive that instead.
+var exeOverride = Environment.GetEnvironmentVariable("MCP_ORCHESTRATOR_COMMAND");
+
 var transport = new StdioClientTransport(new StdioClientTransportOptions
 {
     Name = "orchestrator",
-    Command = "dotnet",
-    Arguments = ["run", "--project", orchestratorProject, "--no-build"],
+    Command = exeOverride ?? "dotnet",
+    Arguments = exeOverride is null
+        ? new[] { "run", "--project", orchestratorProject, "--no-build" }
+        : Array.Empty<string>(),
     WorkingDirectory = solutionDir,
     EnvironmentVariables = new Dictionary<string, string?> { ["MCP_ORCHESTRATOR_CONFIG"] = sampleConfig },
 });
@@ -34,6 +40,26 @@ await using var client = await McpClient.CreateAsync(transport);
 
 var tools = await client.ListToolsAsync(new RequestOptions());
 Console.WriteLine($"\nOrchestrator exposes: {string.Join(", ", tools.Select(t => t.Name))}");
+
+// CI/AOT smoke: confirm the (native) binary starts, serves exactly the 3 meta-tools, and can run
+// one — list_capabilities, which exercises the source-generated JSON path that AOT is sensitive to.
+// Needs no downstream servers, so it's a fast, reliable gate. Exits with a pass/fail code.
+if (args.Contains("--check-tools"))
+{
+    var names = tools.Select(t => t.Name).ToHashSet();
+    string[] expected = ["list_capabilities", "discover_tools", "route"];
+    var toolsOk = tools.Count == expected.Length && expected.All(names.Contains);
+
+    var listResult = await client.CallToolAsync("list_capabilities", new Dictionary<string, object?>());
+    var text = string.Concat(listResult.Content.OfType<TextContentBlock>().Select(b => b.Text));
+    var jsonOk = text.TrimStart().StartsWith('['); // a serialized capability array
+
+    var ok = toolsOk && jsonOk;
+    Console.WriteLine(ok
+        ? "OK: serves the 3 tools and list_capabilities serialized correctly."
+        : $"FAIL: toolsOk={toolsOk} jsonOk={jsonOk}");
+    return ok ? 0 : 1;
+}
 
 await CallAsync(client, "list_capabilities", new());
 
@@ -79,6 +105,7 @@ await CallAsync(client, "route", new()
 await CallAsync(client, "discover_tools", new() { ["capability"] = "does-not-exist" });
 
 Console.WriteLine("\n=== smoke test complete ===");
+return 0;
 
 // Calls one orchestrator meta-tool and prints any text content blocks from the result.
 static async Task CallAsync(McpClient client, string tool, Dictionary<string, object?> arguments)

@@ -71,12 +71,6 @@ public sealed partial class CapabilityCatalog : ICapabilityCatalog
         return new CapabilityCatalog(kept);
     }
 
-    private static readonly JsonSerializerOptions ReadOptions = new()
-    {
-        PropertyNameCaseInsensitive = true,
-        ReadCommentHandling = JsonCommentHandling.Skip,
-        AllowTrailingCommas = true,
-    };
 
     /// <summary>
     /// Loads the catalog. The config path comes from <c>MCP_ORCHESTRATOR_CONFIG</c>
@@ -106,7 +100,7 @@ public sealed partial class CapabilityCatalog : ICapabilityCatalog
         OrchestratorConfig? config;
         try
         {
-            config = JsonSerializer.Deserialize<OrchestratorConfig>(File.ReadAllText(configPath), ReadOptions);
+            config = JsonSerializer.Deserialize(File.ReadAllText(configPath), OrchestratorConfigJsonContext.Default.OrchestratorConfig);
         }
         catch (Exception ex) when (ex is JsonException or IOException or UnauthorizedAccessException)
         {
