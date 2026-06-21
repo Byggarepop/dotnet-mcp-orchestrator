@@ -41,6 +41,26 @@ await using var client = await McpClient.CreateAsync(transport);
 var tools = await client.ListToolsAsync(new RequestOptions());
 Console.WriteLine($"\nOrchestrator exposes: {string.Join(", ", tools.Select(t => t.Name))}");
 
+// CI/AOT smoke: confirm the (native) binary starts, serves exactly the 3 meta-tools, and can run
+// one — list_capabilities, which exercises the source-generated JSON path that AOT is sensitive to.
+// Needs no downstream servers, so it's a fast, reliable gate. Exits with a pass/fail code.
+if (args.Contains("--check-tools"))
+{
+    var names = tools.Select(t => t.Name).ToHashSet();
+    string[] expected = ["list_capabilities", "discover_tools", "route"];
+    var toolsOk = tools.Count == expected.Length && expected.All(names.Contains);
+
+    var listResult = await client.CallToolAsync("list_capabilities", new Dictionary<string, object?>());
+    var text = string.Concat(listResult.Content.OfType<TextContentBlock>().Select(b => b.Text));
+    var jsonOk = text.TrimStart().StartsWith('['); // a serialized capability array
+
+    var ok = toolsOk && jsonOk;
+    Console.WriteLine(ok
+        ? "OK: serves the 3 tools and list_capabilities serialized correctly."
+        : $"FAIL: toolsOk={toolsOk} jsonOk={jsonOk}");
+    return ok ? 0 : 1;
+}
+
 await CallAsync(client, "list_capabilities", new());
 
 await CallAsync(client, "discover_tools", new() { ["capability"] = "jira" });
@@ -85,6 +105,7 @@ await CallAsync(client, "route", new()
 await CallAsync(client, "discover_tools", new() { ["capability"] = "does-not-exist" });
 
 Console.WriteLine("\n=== smoke test complete ===");
+return 0;
 
 // Calls one orchestrator meta-tool and prints any text content blocks from the result.
 static async Task CallAsync(McpClient client, string tool, Dictionary<string, object?> arguments)

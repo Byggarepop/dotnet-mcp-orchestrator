@@ -77,12 +77,16 @@ public sealed class DownstreamConnectionManagerTests
     [Fact]
     public async Task Connect_that_never_handshakes_times_out()
     {
-        // A process that starts but never speaks MCP — the connect deadline must fire.
+        // A process that starts but never speaks MCP — the connect deadline must fire. Use an
+        // OS-appropriate "sleep forever" command so this runs on Windows, Linux, and macOS.
+        var (command, sleepArgs) = OperatingSystem.IsWindows()
+            ? ("powershell", new List<string> { "-NoProfile", "-Command", "Start-Sleep -Seconds 30" })
+            : ("sleep", new List<string> { "30" });
         var hang = new CapabilityDescriptor
         {
             Name = "hang",
-            Command = "powershell",
-            Args = new List<string> { "-NoProfile", "-Command", "Start-Sleep -Seconds 30" },
+            Command = command,
+            Args = sleepArgs,
             ConnectTimeoutSeconds = 2,
         };
         await using var conn = Demo.Connections(hang);
