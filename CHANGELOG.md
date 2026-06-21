@@ -10,6 +10,9 @@ uses it as the GitHub Release notes — so keep an entry per released version.
 ## [Unreleased]
 
 ### Added
+- File logging: the stderr log is mirrored to `~/.dotnet-orchestrator-mcp/orchestrator.log`
+  (folder auto-created, ~10 MB rotation). Override the directory with `MCP_ORCHESTRATOR_LOG_DIR`,
+  or disable with `MCP_ORCHESTRATOR_LOG_DIR=off`.
 - Opt-in self-update for the Native-AOT binary (`MCP_ORCHESTRATOR_AUTOUPDATE=1`): on startup it
   checks the latest GitHub Release, verifies the download against `SHA256SUMS`, and stages the new
   binary so the next launch runs it — without ever restarting the live MCP session.
