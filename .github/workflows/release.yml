@@ -1,10 +1,10 @@
 name: release
 
-# On a version tag (e.g. v0.2.0): build + test, produce the Native-AOT binaries per OS, publish the
-# McpOrchestrator tool package to NuGet, and create a GitHub Release with the native binaries.
+# On a version tag (e.g. v0.2.0): build + test, produce the Native-AOT binaries per OS, and create
+# a GitHub Release with those binaries attached.
 #
-# Prerequisite: add a nuget.org API key as the repo secret NUGET_API_KEY
-# (Settings -> Secrets and variables -> Actions). Then: git tag v0.1.0 && git push origin v0.1.0
+# NOTE: NuGet publishing is deliberately NOT included yet — to be added later with the project's
+# own auth method (e.g. NuGet Trusted Publishing / OIDC). Nothing here pushes to NuGet.
 on:
   push:
     tags: ['v*']
@@ -59,25 +59,13 @@ jobs:
           path: out/*
           if-no-files-found: error
 
-  publish:
-    name: publish
+  release:
+    name: release
     needs: build
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
-
-      - uses: actions/setup-dotnet@v5
-        with:
-          dotnet-version: '10.0.x'
-
       - name: Version from tag
         run: echo "VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"
-
-      - name: Pack the tool package
-        run: dotnet pack McpOrchestrator/McpOrchestrator.csproj -c Release -p:Version=${{ env.VERSION }} -o nupkg
-
-      - name: Push to NuGet
-        run: dotnet nuget push nupkg/*.nupkg --api-key "${{ secrets.NUGET_API_KEY }}" --source https://api.nuget.org/v3/index.json --skip-duplicate
 
       - name: Download native builds
         uses: actions/download-artifact@v8
