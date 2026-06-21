@@ -20,29 +20,32 @@ works, setup, adding new MCPs, configuration reference, testing, and troubleshoo
 
 ## Quick start
 
-### 1. See it work (no setup)
+Get the binary, point your agent at it, and list the downstream servers it should relay to. **Two
+config files** are involved:
+
+- **Host config** — your agent's existing MCP file: `.mcp.json` (Claude Code) or `.vscode/mcp.json`
+  (VS Code). You add the orchestrator as a server here.
+- **Orchestrator config** — a new file you create (e.g. `orchestrator.config.json`), pointed to by
+  the `MCP_ORCHESTRATOR_CONFIG` environment variable. It lists the downstream MCP servers.
+
+### 1. Get the orchestrator binary
+
+Pick one:
 
 ```bash
-dotnet build McpOrchestrator.slnx                              # build everything
-dotnet run --project McpOrchestrator.SmokeTest --no-build      # run the end-to-end demo
-dotnet test McpOrchestrator.slnx                               # run the test suite
+# A. As a .NET tool (needs the .NET runtime) — gives you the command `mcp-orchestrator`:
+dotnet tool install --global McpOrchestrator
 ```
 
-The demo drives the orchestrator end-to-end against a sample downstream server (jira / codegen /
-files) — no config or agent needed.
+**B. As a self-contained Native-AOT binary** — a single executable, no .NET runtime required.
+Download it from the [GitHub Releases](https://github.com/Byggarepop/dotnet-mcp-orchestrator/releases)
+(`McpOrchestrator-<version>-<rid>.zip`) and unzip, or
+[build it yourself](McpOrchestrator/README.md#native-aot-smallest-self-contained-binary-fastest-startup).
+You then use the absolute path to the binary as the command.
 
-### 2. Wire it to your agent (full example)
+### 2. Add the orchestrator to your host config (`.mcp.json` / `.vscode/mcp.json`)
 
-Two files do everything: your **host config** points the agent at the orchestrator, and the
-orchestrator's **own config** lists the downstream MCP servers it relays to.
-
-**a. Get the orchestrator binary.** Either install the tool (`dotnet tool install --global
-McpOrchestrator` → command `mcp-orchestrator`) or build the self-contained
-[Native-AOT binary](McpOrchestrator/README.md#native-aot-smallest-self-contained-binary-fastest-startup)
-(a single .exe, no runtime needed).
-
-**b. Register the orchestrator with your agent** — e.g. Claude Code's `.mcp.json` (VS Code uses the
-same shape under `servers`). The agent only ever sees *this one* server:
+The agent only ever sees *this one* server:
 
 ```jsonc
 {
@@ -53,7 +56,7 @@ same shape under `servers`). The agent only ever sees *this one* server:
       "command": "mcp-orchestrator",
       "args": [],
       "env": {
-        // where the orchestrator finds its catalog (absolute path):
+        // absolute path to the orchestrator config you create in step 3:
         "MCP_ORCHESTRATOR_CONFIG": "<ABSOLUTE-PATH-TO>/orchestrator.config.json"
       }
     }
@@ -61,10 +64,11 @@ same shape under `servers`). The agent only ever sees *this one* server:
 }
 ```
 
-**c. Tell the orchestrator which downstream servers to relay to** — the file you pointed
-`MCP_ORCHESTRATOR_CONFIG` at. Each entry is one capability the agent can route to; `command`/`args`/
-`env` are how that downstream MCP is launched (`${SOLUTION_DIR}`, `${CONFIG_DIR}`, and `${ENV_VARS}`
-are substituted):
+### 3. List your downstream servers in the orchestrator config (`orchestrator.config.json`)
+
+This is the file you pointed `MCP_ORCHESTRATOR_CONFIG` at. Each entry is one capability the agent can
+route to; `command`/`args`/`env` are how that downstream MCP is launched (`${SOLUTION_DIR}`,
+`${CONFIG_DIR}`, and any `${ENV_VAR}` are substituted):
 
 ```jsonc
 {
@@ -97,7 +101,9 @@ are substituted):
 }
 ```
 
-**d. Restart the MCP host.** The agent now sees the three meta-tools and the flow is
+### 4. Restart the MCP host
+
+The agent now sees the three meta-tools and the flow is
 `list_capabilities` → `discover_tools("Tokensaver")` → `route("Tokensaver", "outline_c_sharp_file", { … })`.
 
 > **Notes.** `instructions` is optional (a usage hint surfaced to the agent — leave it `""`).
