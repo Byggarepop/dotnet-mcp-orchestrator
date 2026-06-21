@@ -541,6 +541,23 @@ variables — **user-level**
 (e.g. Windows `setx`, or a shell rc file) or **machine-level** (needs admin) — but then **restart
 the MCP host**, since a child process captures its environment at launch.
 
+### Logs
+
+The orchestrator logs to **stderr** (stdout is reserved for the MCP protocol), but the host
+captures a child's stderr where it's easy to lose — so the same log is also mirrored to a **file**:
+
+```
+%USERPROFILE%/.dotnet-orchestrator-mcp/orchestrator.log      (Windows)
+$HOME/.dotnet-orchestrator-mcp/orchestrator.log              (Linux/macOS)
+```
+
+The folder is created if missing; the file shows the flow — config load, downstream connects, each
+tool call and its result, and any errors — and rotates to `orchestrator.log.1` past ~10 MB. On
+startup the chosen path is printed to stderr. To change or disable it:
+
+- `MCP_ORCHESTRATOR_LOG_DIR=/some/dir` — write the log to a different directory.
+- `MCP_ORCHESTRATOR_LOG_DIR=off` — disable file logging (stderr only).
+
 ---
 
 ## Testing

@@ -24,6 +24,16 @@ public static class OrchestratorHost
         // stdout is reserved for the MCP stdio protocol — all logging must go to stderr.
         builder.Logging.AddConsole(options => options.LogToStandardErrorThreshold = LogLevel.Trace);
 
+        // Mirror the log to a file under the user's profile (stderr from an MCP child is easy to
+        // lose). Default: %USERPROFILE%/.dotnet-orchestrator-mcp/orchestrator.log; override the
+        // directory with MCP_ORCHESTRATOR_LOG_DIR, or disable with MCP_ORCHESTRATOR_LOG_DIR=off.
+        var fileLogger = Diagnostics.FileLoggerProvider.Create();
+        if (fileLogger is not null)
+        {
+            builder.Logging.AddProvider(fileLogger);
+            Console.Error.WriteLine($"[McpOrchestrator] Logging to {fileLogger.FilePath}");
+        }
+
         // Orchestration services:
         //  - ICapabilityCatalog          : the address book of downstream MCPs (from config).
         //  - IDownstreamConnectionManager: connects to / proxies calls to those MCPs (MCP client).
