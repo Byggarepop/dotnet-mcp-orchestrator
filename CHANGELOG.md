@@ -14,6 +14,9 @@ uses it as the GitHub Release notes — so keep an entry per released version.
   checks the latest GitHub Release, verifies the download against `SHA256SUMS`, and stages the new
   binary so the next launch runs it — without ever restarting the live MCP session.
 - The release workflow now publishes a `SHA256SUMS` asset for the native binaries.
+- NuGet publishing via Trusted Publishing (OIDC) — no stored API key; nuget.org issues a
+  short-lived key to the release workflow. Opt-in (`PUBLISH_NUGET=true` + a `NUGET_USER` secret and
+  a nuget.org trusted-publishing policy).
 
 ## [0.1.0] - 2026-06-21
 

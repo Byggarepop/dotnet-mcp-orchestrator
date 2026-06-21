@@ -3,16 +3,15 @@ name: release
 # On a version tag (e.g. v0.2.0): build + test, produce the Native-AOT binaries per OS, and create
 # a GitHub Release with those binaries + the tool .nupkg attached.
 #
-# NuGet publishing is wired up the same way tokensaver does it (API key in a secret named NUGET),
-# but it is OFF by default — nothing pushes to NuGet until you opt in:
-#   1. add a nuget.org API key as the repo secret  NUGET
-#   2. set the repo variable  PUBLISH_NUGET = true   (Settings -> Secrets and variables -> Actions)
+# NuGet publishing uses Trusted Publishing (OIDC) — no stored API key. nuget.org issues a
+# short-lived key to this workflow at run time. It is OFF by default; to enable it:
+#   1. nuget.org -> (your username) -> Trusted Publishing -> add a policy:
+#        Repository Owner: Byggarepop   Repository: dotnet-mcp-orchestrator   Workflow File: release.yml
+#   2. add the repo secret   NUGET_USER    = your nuget.org username (profile name, NOT your email)
+#   3. set the repo variable PUBLISH_NUGET = true   (Settings -> Secrets and variables -> Actions)
 on:
   push:
     tags: ['v*']
-
-permissions:
-  contents: write   # to create the GitHub Release
 
 jobs:
   build:
@@ -65,6 +64,9 @@ jobs:
     name: release
     needs: build
     runs-on: ubuntu-latest
+    permissions:
+      contents: write   # create the GitHub Release
+      id-token: write   # request the OIDC token for NuGet trusted publishing
     steps:
       - uses: actions/checkout@v7
 
@@ -78,10 +80,19 @@ jobs:
       - name: Pack the tool package
         run: dotnet pack McpOrchestrator/McpOrchestrator.csproj -c Release -p:Version=${{ env.VERSION }} -o nupkg
 
-      # OFF unless you opt in (see header): pushes to nuget.org only when PUBLISH_NUGET == 'true'.
+      # NuGet publishing is OFF unless you opt in (see header): both steps below run only when
+      # PUBLISH_NUGET == 'true'. Trusted Publishing — login exchanges the OIDC token for a
+      # short-lived key, requested just before the push (the key is valid ~1 hour).
+      - name: NuGet login (OIDC -> temp API key)
+        if: vars.PUBLISH_NUGET == 'true'
+        id: nuget_login
+        uses: NuGet/login@v1
+        with:
+          user: ${{ secrets.NUGET_USER }}
+
       - name: Push to NuGet
         if: vars.PUBLISH_NUGET == 'true'
-        run: dotnet nuget push nupkg/*.nupkg --api-key ${{ secrets.NUGET }} --source https://api.nuget.org/v3/index.json --skip-duplicate
+        run: dotnet nuget push nupkg/*.nupkg --api-key ${{ steps.nuget_login.outputs.NUGET_API_KEY }} --source https://api.nuget.org/v3/index.json --skip-duplicate
 
       - name: Download native builds
         uses: actions/download-artifact@v8
