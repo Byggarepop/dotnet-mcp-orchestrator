@@ -23,8 +23,8 @@ works, setup, adding new MCPs, configuration reference, testing, and troubleshoo
 Get the binary, point your agent at it, and list the downstream servers it should relay to. **Two
 config files** are involved:
 
-- **Host config** — your agent's existing MCP file: `.mcp.json` (Claude Code) or `.vscode/mcp.json`
-  (VS Code). You add the orchestrator as a server here.
+- **Host config** — your agent's existing MCP file: `.mcp.json` (Claude Code and Visual Studio) or
+  `.vscode/mcp.json` (VS Code). You add the orchestrator as a server here.
 - **Orchestrator config** — a new file you create (e.g. `orchestrator.config.json`), pointed to by
   the `MCP_ORCHESTRATOR_CONFIG` environment variable. It lists the downstream MCP servers.
 
