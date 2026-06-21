@@ -123,36 +123,4 @@ public sealed class OrchestratorToolTests
             || root.TryGetProperty("error", out _);
         Assert.True(surfaced);
     }
-
-    [Fact]
-    public async Task Request_maps_an_issue_key_through_the_planner()
-    {
-        var (catalog, conn) = Demo.StandardPair();
-        await using var owned = conn;
-        var planner = new HeuristicRoutePlanner();
-
-        var root = Parse(await OrchestratorTool.Request(
-            conn, planner, catalog, Log, "jira", "what is the status of PROJ-1", CancellationToken.None));
-
-        Assert.Equal("get_issue", root.GetProperty("tool").GetString());
-        Assert.Equal("PROJ-1", root.GetProperty("arguments").GetProperty("issueKey").GetString());
-        Assert.False(root.GetProperty("isError").GetBoolean());
-    }
-
-    [Fact]
-    public async Task Request_documents_planner_weakness_on_codegen()
-    {
-        // Honest characterization: 'request' still routes to generate_class, but the heuristic
-        // mis-fills className with the whole sentence. This is why 'route' is the preferred path.
-        var (catalog, conn) = Demo.StandardPair();
-        await using var owned = conn;
-        var planner = new HeuristicRoutePlanner();
-
-        var root = Parse(await OrchestratorTool.Request(
-            conn, planner, catalog, Log, "codegen",
-            "generate a class named Customer with fields Id, Name, Email", CancellationToken.None));
-
-        Assert.Equal("generate_class", root.GetProperty("tool").GetString());
-        Assert.Contains("class generate a class named Customer", root.GetProperty("text").GetString());
-    }
 }

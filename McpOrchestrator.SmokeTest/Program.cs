@@ -16,12 +16,18 @@ var orchestratorProject = Path.Combine(solutionDir, "McpOrchestrator", "McpOrche
 Console.WriteLine($"Solution dir : {solutionDir}");
 Console.WriteLine($"Orchestrator : {orchestratorProject}");
 
+// Point the orchestrator at the repo's sample catalog (jira / codegen / files) so this demo has
+// capabilities to route to. The orchestrator otherwise starts empty (no config is checked in at
+// the default path) — real users set MCP_ORCHESTRATOR_CONFIG to their own file the same way.
+var sampleConfig = Path.Combine(solutionDir, "McpOrchestrator", "orchestrator.config.sample.json");
+
 var transport = new StdioClientTransport(new StdioClientTransportOptions
 {
     Name = "orchestrator",
     Command = "dotnet",
     Arguments = ["run", "--project", orchestratorProject, "--no-build"],
     WorkingDirectory = solutionDir,
+    EnvironmentVariables = new Dictionary<string, string?> { ["MCP_ORCHESTRATOR_CONFIG"] = sampleConfig },
 });
 
 await using var client = await McpClient.CreateAsync(transport);
@@ -38,12 +44,6 @@ await CallAsync(client, "route", new()
     ["capability"] = "jira",
     ["tool"] = "get_issue",
     ["arguments"] = new Dictionary<string, object?> { ["issueKey"] = "PROJ-1" },
-});
-
-await CallAsync(client, "request", new()
-{
-    ["capability"] = "jira",
-    ["request"] = "what is the status of PROJ-3?",
 });
 
 await CallAsync(client, "route", new()

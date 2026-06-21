@@ -1,45 +1,45 @@
 # McpOrchestrator — a .NET-native MCP orchestrator
 
 **Route one agent through one server to many MCP servers, with progressive tool discovery to keep
-context small — plus an optional fully-local, no-API natural-language router.**
+the agent's context small.**
 
 One agent connects to **this single server**; it holds the connections to many downstream MCP
-servers (JIRA, code generation, DB search, a filesystem server, …) and routes the agent's requests
-to the right one. Instead of switching agents to switch toolsets, you use **one agent + one MCP**
-that can reach everything — and because the downstream tools are discovered on demand, the agent's
+servers (JIRA, code generation, DB search, a filesystem server, …) and relays the agent's calls to
+the right one. Instead of switching agents to switch toolsets, you use **one agent + one MCP** that
+can reach everything — and because the downstream tools are discovered on demand, the agent's
 always-loaded context stays flat no matter how many servers you connect (see
 [Token scaling](#token-scaling)).
 
-The orchestrator is therefore both:
+It's a **pure relay**: the orchestrator never interprets the agent's input, it forwards exactly what
+the agent sends. The agent does all the thinking. The orchestrator is therefore both:
 
-- an **MCP server** to the agent (it exposes the four meta-tools below), and
+- an **MCP server** to the agent (it exposes the three meta-tools below), and
 - an **MCP client** to each downstream server (it launches them and forwards tool calls).
 
 ```
-                         ┌─────────────────────── orchestrator (this server) ───────────────────────┐
-   one agent  ──MCP──▶   │  list_capabilities · discover_tools · route · request                     │
-   (the model)           │        │ catalog (config)            │ connection manager (MCP client)    │
-                         └────────┼─────────────────────────────┼────────────────────────────────────┘
+                         ┌─────────────────── orchestrator (this server) ───────────────────┐
+   one agent  ──MCP──▶   │  list_capabilities · discover_tools · route                       │
+   (the model)           │        │ catalog (config)            │ connection manager (MCP client)
+                         └────────┼─────────────────────────────┼─────────────────────────────┘
                                   │                              │
-                          orchestrator.config.json       ──MCP──▶  jira MCP      (get_issue, search_issues)
+                          orchestrator config            ──MCP──▶  jira MCP      (get_issue, search_issues)
                           (connections + instructions)   ──MCP──▶  codegen MCP   (generate_class)
                                                           ──MCP──▶  files MCP, db MCP, …
 ```
 
 > **Where this fits.** This is the proven *progressive tool-discovery* pattern (as used by tools
 > like [`mcp-cli`](https://www.philschmid.de/mcp-cli) and "dynamic toolsets") — implemented as a
-> **.NET / C# MCP server** rather than a shell CLI, and with a **local-first twist**: an optional
-> in-process model can do the natural-language routing with no cloud API. If you live in the .NET
-> ecosystem, or want self-hosted/offline MCP aggregation you can read and extend in C#, that's the
-> niche it fills. It does not (yet) include the enterprise layer — auth, multi-tenancy, rate
-> limiting — that gateways like Kong or Envoy AI Gateway provide.
+> **.NET / C# MCP server** rather than a shell CLI. If you live in the .NET ecosystem, or want
+> self-hostable MCP aggregation you can read and extend in C#, that's the niche it fills. It does
+> not include the enterprise layer — auth, multi-tenancy, rate limiting — that gateways like Kong or
+> Envoy AI Gateway provide.
 
 ---
 
 ## Contents
 
 1. [How it works](#how-it-works)
-2. [The four tools](#the-four-tools-agent-facing-surface)
+2. [The three tools](#the-three-tools-agent-facing-surface)
 3. [Token scaling](#token-scaling)
 4. [How it compares](#how-it-compares)
 5. [Prerequisites](#prerequisites)
@@ -47,14 +47,13 @@ The orchestrator is therefore both:
 7. [Register the orchestrator with an agent](#register-the-orchestrator-with-an-agent)
 8. [Packaging — install as a .NET tool](#packaging-install-as-a-net-tool)
 9. [Add a new downstream MCP](#add-a-new-downstream-mcp)
-10. [Optional: a local LLM for `request`](#optional-a-local-llm-for-request)
-11. [Configuration reference](#configuration-reference)
-12. [Testing](#testing)
-13. [Troubleshooting & pitfalls](#troubleshooting--pitfalls)
-14. [Security](#security)
-15. [Extending](#extending)
-16. [Project layout](#project-layout)
-17. [Debugging](#debugging)
+10. [Configuration reference](#configuration-reference)
+11. [Testing](#testing)
+12. [Troubleshooting & pitfalls](#troubleshooting--pitfalls)
+13. [Security](#security)
+14. [Extending](#extending)
+15. [Project layout](#project-layout)
+16. [Debugging](#debugging)
 
 ---
 
@@ -69,11 +68,10 @@ The orchestrator is therefore both:
 
 > ### Design principle: the orchestrator is a courier, not an interpreter
 > It forwards exactly what the agent sends and does no language understanding of its own. The
-> interpreting is the LLM's job — which is why each capability's `instructions` spell out the
-> precise arguments to pass (e.g. *"always include the Jira issue key as
-> `{\"issueKey\":\"PROJ-123\"}`"*). This makes the system reliable for tasks that need no
-> interpretation by the orchestrator. The `request` tool (orchestrator-side guessing) exists
-> only as a best-effort convenience — see [Why `route` over `request`](#why-route-over-request).
+> interpreting is the agent's job: it reads each capability's `summary`/`instructions`, calls
+> `discover_tools` to get the real tool schemas, and calls `route` with arguments it fills in. The
+> orchestrator never turns a sentence into a tool call — the agent (already an LLM) does that, and
+> does it better. This is why the design stays simple and reliable.
 
 Connections are made **lazily** on first use, **cached** per capability for reuse, and
 **disposed** on shutdown. A connect that fails or times out is **evicted** so the next call
@@ -81,43 +79,30 @@ retries instead of awaiting a dead connection.
 
 ---
 
-## The four tools (agent-facing surface)
+## The three tools (agent-facing surface)
 
 | Tool | Parameters | Purpose |
 | --- | --- | --- |
 | `list_capabilities` | — | List the downstream MCPs (name, summary, instructions). Call first. |
 | `discover_tools` | `capability` | Connect to one capability and list its tools + input schemas. |
-| `route` | `capability`, `tool`, `arguments` | **Preferred.** Forward a specific tool call (you pick the tool and fill the arguments) and return its result. |
-| `request` | `capability`, `request` | *Best-effort convenience.* Describe a need in words; the orchestrator **guesses** the tool/args with a keyword heuristic. Unreliable — prefer `route`. |
+| `route` | `capability`, `tool`, `arguments` | Forward a specific tool call (you pick the tool and fill the arguments) and return its result. |
 
-`route`/`request` return JSON: `capability`, `tool`, `isError`, `text` (flattened text
-content), `structured` (when the downstream tool returns structured content), the `arguments`
-actually sent (echoed for auditing), and — for `request` — a `rationale` for the choice.
-Anything that goes wrong is returned as `{ "error": ..., "availableCapabilities": [...] }`
-rather than thrown, so the agent always receives parseable JSON.
+`route` returns JSON: `capability`, `tool`, `isError`, `text` (flattened text content),
+`structured` (when the downstream tool returns structured content), and the `arguments` actually
+sent (echoed for auditing). Anything that goes wrong is returned as
+`{ "error": ..., "availableCapabilities": [...] }` rather than thrown, so the agent always receives
+parseable JSON.
 
-### Why `route` over `request`
-
-`request` asks the orchestrator to turn a sentence into a tool call. The shipped
-`HeuristicRoutePlanner` does this with keyword matching and a couple of regexes — it has **no
-language understanding**, so it only works when the tool is obvious and the request literally
-contains the argument values (e.g. an explicit `PROJ-123` key). Give it
-*"generate a class named Customer with fields Id, Name, Email"* and it dumps the whole sentence
-into `className`. The capable interpreter is already in the loop — the agent's LLM — so the
-reliable pattern is `discover_tools` + `route`, with the model filling the arguments per each
-capability's instructions. Treat `request` as a shortcut for trivial cases only. (This weakness
-is pinned down by a characterization test in the test suite.)
-
-You can make `request` genuinely smart by enabling the **optional embedded local LLM** — a small
-model that runs in-process and turns the sentence into a real tool call. See
-[Optional: a local LLM for `request`](#optional-a-local-llm-for-request).
+There is deliberately **no "describe it in English" tool**: turning a sentence into a tool call is
+interpretation, and that's the agent's job (it already has the schemas from `discover_tools`). The
+orchestrator stays a pure relay.
 
 ---
 
 ## Token scaling
 
 The orchestrator's main benefit is that the agent's **always-loaded tool surface stays constant
-at four tools (~800 tokens) no matter how many downstream MCPs you connect.** This is the inverse
+at three tools (~600 tokens) no matter how many downstream MCPs you connect.** This is the inverse
 of wiring many MCP servers directly into one agent, where *every tool from every server* is
 injected as a permanent tool definition (name + description + full JSON schema) and sits in context
 on every turn.
@@ -125,14 +110,14 @@ on every turn.
 | Setup | Always-loaded tool tokens |
 | --- | --- |
 | **Direct:** 10 MCPs × ~12 tools, ~250 tok per schema | **~30,000 tokens, every turn** |
-| **Orchestrator:** the 4 meta-tools | **~800 tokens, every turn — flat** |
+| **Orchestrator:** the 3 meta-tools | **~600 tokens, every turn — flat** |
 
 Downstream detail moves from *persistent tool definitions* to *on-demand tool results* — content
 you only pay for when you fetch it:
 
 | Surface | Cost | When it is in context |
 | --- | --- | --- |
-| The 4 meta-tools | ~800 tokens, **flat** | always |
+| The 3 meta-tools | ~600 tokens, **flat** | always |
 | `list_capabilities` | **~100 tokens per capability** | only when called (a transient result) |
 | `discover_tools(capability)` | one capability's full schemas | only when called, **one capability at a time** |
 
@@ -142,22 +127,22 @@ the agent actually inspects it — you never load every capability's schemas at 
 
 ### The flat surface is conditional: route *through* the orchestrator
 
-The four tools are fixed in the orchestrator's code — no agent file can change them. But the agent
-file's `tools:` line is a **grant list**, and a user can grant their agent more than four tools by
+The three tools are fixed in the orchestrator's code — no agent file can change them. But the agent
+file's `tools:` line is a **grant list**, and a user can grant their agent more than three tools by
 referencing **other MCP servers directly**, alongside the orchestrator:
 
 ```yaml
 tools: [ 'orchestrator/*', 'github/*', 'postgres/*' ]
 ```
 
-The flat ~800-token property holds **only for what is reached through the orchestrator.** Any server
+The flat ~600-token property holds **only for what is reached through the orchestrator.** Any server
 listed directly has *its* tools injected as persistent definitions again — the very cost the
 orchestrator removes:
 
 | Agent file `tools:` | Always-loaded tool tokens |
 | --- | --- |
-| `[ 'orchestrator/*' ]` | ~800, flat — even with 50 capabilities behind it |
-| `[ 'orchestrator/*', 'github/*', 'postgres/*' ]` | ~800 **plus** every `github` + `postgres` tool schema |
+| `[ 'orchestrator/*' ]` | ~600, flat — even with 50 capabilities behind it |
+| `[ 'orchestrator/*', 'github/*', 'postgres/*' ]` | ~600 **plus** every `github` + `postgres` tool schema |
 
 So put the long tail of tools **behind** the orchestrator (`orchestrator/*`), and only promote a
 tool to a direct `tools:` entry when avoiding its discovery round-trip is worth paying its always-on
@@ -175,7 +160,7 @@ capabilities). It stays cheap into the dozens; to keep it small as you scale:
    agent pulls a slice rather than the whole catalog.
 
 The trade-off is **tokens for round-trips**: discovery (`list_capabilities` → `discover_tools` →
-`route`) costs a few extra turns, in exchange for a flat ~800-token surface instead of tens of
+`route`) costs a few extra turns, in exchange for a flat ~600-token surface instead of tens of
 thousands. For "many MCPs on a modest context budget," that is strongly favorable — which is the
 reason this architecture exists.
 
@@ -221,7 +206,7 @@ surface* — so here is an honest map of where it sits, not a claim to have inve
 | --- | --- | --- | --- |
 | Integration | **MCP server, typed tools, no shell needed** | CLI binary driven via the agent's shell | MCP server / proxy |
 | Tool discovery | progressive (`list` → `discover` → `route`) | progressive | varies |
-| NL routing | optional **in-process local model** (grammar-constrained), else heuristic | none — the agent builds each call | none / varies |
+| Interprets the agent's input | **no — pure relay** | no | varies |
 | Enterprise layer (auth, multi-tenancy, rate limiting, observability) | **no** | no | **yes** |
 | Runtime | **.NET / C#** | single binary (Bun) | varies (Go, etc.) |
 
@@ -236,10 +221,9 @@ deliberately doesn't.)
 production layer — auth, multi-tenancy, rate limiting, observability — that this does **not**. This
 is a focused, self-hostable implementation, not an enterprise gateway.
 
-**What's actually distinctive here:** it's **.NET / C# native** (most MCP tooling is TS/Python/Go),
-and it offers an **optional fully-local, no-API natural-language router** for the `request` path.
-The discovery/token-reduction pattern itself is not novel — the value is the .NET implementation,
-the no-shell typed-server integration, and the local-first option.
+**What's actually distinctive here:** it's **.NET / C# native** (most MCP tooling is TS/Python/Go)
+and a deliberately small, self-hostable **pure relay**. The discovery/token-reduction pattern itself
+is not novel — the value is the .NET implementation and the no-shell typed-server integration.
 
 ---
 
@@ -248,8 +232,6 @@ the no-shell typed-server integration, and the local-first option.
 - **.NET SDK 10** (`dotnet --version` ≥ `10.0.300`).
 - **Node.js / npx** — only if you point a capability at an npm-based MCP server (e.g. the
   filesystem reference server). `node` ≥ 18.
-- **Internet on first run** — only if you enable the optional
-  [local LLM planner](#optional-a-local-llm-for-request) (it downloads a model once).
 - The repo ships a local [`NuGet.config`](../NuGet.config) that restores from nuget.org alone,
   so a clean `dotnet build` works without any machine-level feed.
 
@@ -332,24 +314,14 @@ Register a stdio server in [`.mcp.json`](../.mcp.json) (Visual Studio) and
 ## Packaging — install as a .NET tool
 
 The orchestrator packs as a **.NET tool** (`dotnet pack`), so it can be installed and referenced by
-a command name instead of a project path. There are **two packages**, so you only pay for what you
-use:
-
-| Package | Command | Size | Contents |
-| --- | --- | --- | --- |
-| **`McpOrchestrator`** | `mcp-orchestrator` | **~1.4 MB** | Core orchestrator + heuristic `request`. The lean default. |
-| **`McpOrchestrator.LocalLlm`** | `mcp-orchestrator-llm` | **~50 MB** | The same host **plus** the embedded local LLM (LLamaSharp native backend). |
-
-Both are **framework-dependent** (need .NET 10 installed) and **portable** (one package, all
-platforms). The model weights are **never** in either package — they download on first use. The
-size gap is entirely the native llama.cpp libraries in the LLM package.
+a command name instead of a project path. It's a single **~1.4 MB**, framework-dependent (needs
+.NET 10 installed), portable (one package, all platforms) package.
 
 ```bash
-# build the packages locally
+# build the package locally
 dotnet pack McpOrchestrator/McpOrchestrator.csproj -c Release -o ./nupkg
-dotnet pack McpOrchestrator.LocalLlm/McpOrchestrator.LocalLlm.csproj -c Release -o ./nupkg
 
-# install the lean core tool from the local folder (or from a feed once published)
+# install the tool from the local folder (or from a feed once published)
 dotnet tool install --global --add-source ./nupkg McpOrchestrator
 ```
 
@@ -362,6 +334,12 @@ Then register it by command name:
   }
 }
 ```
+
+> **An installed tool ships a minimal *template* catalog**, not the repo's demo config (the demo
+> points at sample projects that don't exist once installed). So a fresh install starts with an
+> effectively empty catalog plus one disabled example. Point **`MCP_ORCHESTRATOR_CONFIG`** at your
+> own config file (recommended, so upgrades don't overwrite it), or edit the shipped
+> `orchestrator.config.json` next to the tool. See [Add a new downstream MCP](#add-a-new-downstream-mcp).
 
 ### Build everything with one script
 
@@ -380,11 +358,8 @@ It emits **three tiers**, so each consumer gets a fitting install option:
 | Tier | Example artifact | Approx size | Install | Needs .NET? |
 | --- | --- | --- | --- | --- |
 | **1. Portable tool** | `McpOrchestrator.0.1.0.nupkg` | 1.4 MB | `dotnet tool install McpOrchestrator` | yes (runtime) |
-| (portable LLM) | `McpOrchestrator.LocalLlm.0.1.0.nupkg` | 50 MB | `dotnet tool install McpOrchestrator.LocalLlm` | yes |
 | **2. Self-contained tool** | `McpOrchestrator.win-x64.0.1.0.nupkg` | ~36 MB | `dotnet tool install McpOrchestrator.win-x64` | CLI only* |
-| (self-contained LLM) | `McpOrchestrator.LocalLlm.win-x64.0.1.0.nupkg` | ~48 MB | `dotnet tool install McpOrchestrator.LocalLlm.win-x64` | CLI only* |
 | **3. Self-contained zip** | `McpOrchestrator-0.1.0-win-x64-selfcontained.zip` | ~32 MB | unzip & run | **no** |
-| (self-contained LLM zip) | `McpOrchestrator.LocalLlm-0.1.0-win-x64-selfcontained.zip` | ~43 MB | unzip & run | **no** |
 
 **\*** A self-contained *tool* package still needs the **dotnet CLI to install** (`dotnet tool
 install` requires it). What it bundles is the *runtime version*, so it runs even if the matching
@@ -393,14 +368,15 @@ the only artifact that needs nothing installed.
 
 So pick by audience: **tier 1** for developers (smallest), **tier 2** for uniform `dotnet tool`
 installs that don't depend on the exact runtime, **tier 3** for zero-install on a machine without
-.NET. The model weights are never bundled in any artifact — they download on first use.
+.NET.
 
 ---
 
 ## Add a new downstream MCP
 
-Adding a capability is a **config-only** change — no code. Edit
-[`orchestrator.config.json`](orchestrator.config.json) and add one entry to `capabilities`.
+Adding a capability is a **config-only** change — no code. Edit your config file — the demo
+[`orchestrator.config.sample.json`](orchestrator.config.sample.json), or whatever
+`MCP_ORCHESTRATOR_CONFIG` points at — and add one entry to `capabilities`.
 
 **Step 1 — describe the connection and the instructions.**
 
@@ -448,58 +424,6 @@ To **temporarily disable** a capability without deleting it, set `"enabled": fal
 
 ---
 
-## Optional: a local LLM for `request`
-
-The `request` tool's default planner is a keyword heuristic with no language understanding. You
-can replace it with a **small LLM that runs in-process** (no external server, no GPU) so
-`request` reliably turns a sentence into the right tool call. It is **opt-in** and ships as a
-**separate package/host** so the core stays lean (see [Packaging](#packaging-install-as-a-net-tool)).
-
-**Enable it** by running the `McpOrchestrator.LocalLlm` host instead of the core one — it reuses
-the exact same orchestrator wiring and only swaps in the local-model planner:
-
-```jsonc
-// .mcp.json / .vscode/mcp.json — use the LLM host instead of the core one
-"command": "mcp-orchestrator-llm"        // installed as a tool, OR:
-"command": "dotnet", "args": ["run", "--project", ".../McpOrchestrator.LocalLlm", "--no-build"]
-```
-
-The LLM planner is **on by default** in that host; set `MCP_ORCHESTRATOR_PLANNER=heuristic` to force
-heuristic-only (and skip the model entirely). The core `McpOrchestrator` host never loads the LLM.
-
-**What happens:**
-
-- On the **first `request` call**, the model is **downloaded once** (~400 MB) into
-  `%LOCALAPPDATA%/McpOrchestrator/models/` and reused thereafter. Startup is unaffected — the
-  download is lazy, not at boot.
-- The default model is **Qwen2.5-0.5B-Instruct (Q4_K_M)** — chosen to run on modest CPUs (~0.5–1 GB
-  RAM). Routing a request takes roughly **1–4 s** on CPU after the model is loaded.
-- Routing is **grammar-constrained**: the model is physically restricted to emit one of the real
-  tool names, then a JSON object using only that tool's schema keys. This is what makes a sub-1B
-  model dependable here.
-- If the model is unavailable (not yet downloaded, offline, load error) the planner **falls back
-  to the heuristic automatically**, so `request` never hard-fails.
-
-**Tuning** (all optional environment variables):
-
-| Variable | Default | Meaning |
-| --- | --- | --- |
-| `MCP_ORCHESTRATOR_PLANNER` | `llm` (in the LLM host) | Set to `heuristic` to force heuristic-only and skip the model. |
-| `MCP_ORCHESTRATOR_LLM_MODEL` | _(unset)_ | Path to a GGUF you already have — skips the download. |
-| `MCP_ORCHESTRATOR_LLM_URL` | Qwen2.5-0.5B Q4 | Download URL for the model (to choose a different one, e.g. a 1.5B). |
-| `MCP_ORCHESTRATOR_LLM_CACHE` | `%LOCALAPPDATA%/McpOrchestrator/models` | Where the model is cached. |
-| `MCP_ORCHESTRATOR_LLM_THREADS` | auto | CPU threads for inference. |
-
-> A bigger model (e.g. Qwen2.5-1.5B) is noticeably better at argument extraction but ~2–4× slower
-> on CPU. Point `MCP_ORCHESTRATOR_LLM_URL`/`MCP_ORCHESTRATOR_LLM_MODEL` at it to switch. For the
-> most reliable results, prefer `route` regardless — the local LLM only improves the `request`
-> convenience path.
-
-The embedded runtime is **LLamaSharp** (llama.cpp); its CPU backend ships with the server, but the
-model weights do not (they're downloaded on first use).
-
----
-
 ## Configuration reference
 
 Each entry in `capabilities` is one downstream MCP server.
@@ -522,18 +446,46 @@ Each entry in `capabilities` is one downstream MCP server.
 
 - `${SOLUTION_DIR}` — the repository root (built in).
 - `${CONFIG_DIR}` — the folder containing the config file (built in).
-- any other `${NAME}` — resolved from a **process environment variable**; an unresolved token
+- any other `${NAME}` — resolved from a **process environment variable**; an unresolved placeholder
   is left as-is and logged.
 
 **Config location** is resolved in this order, first hit wins:
 
 1. `MCP_ORCHESTRATOR_CONFIG` environment variable (an explicit file path), then
-2. `<solutionDir>/McpOrchestrator/orchestrator.config.json` (the in-repo source), then
-3. `orchestrator.config.json` next to the built assembly, then
+2. `<solutionDir>/McpOrchestrator/orchestrator.config.json` (if you create one there), then
+3. `orchestrator.config.json` next to the built assembly (the shipped template), then
 4. `orchestrator.config.json` in the host content root.
+
+> The repo does **not** check in an `orchestrator.config.json` at the default path — only a
+> [`orchestrator.config.template.json`](orchestrator.config.template.json) (what installed tools
+> ship) and an [`orchestrator.config.sample.json`](orchestrator.config.sample.json) demo catalog
+> that the SmokeTest and IDE configs point `MCP_ORCHESTRATOR_CONFIG` at explicitly.
 
 A missing or invalid config is non-fatal: the server starts with **zero capabilities** and logs
 a warning/error rather than crashing.
+
+### Setting environment variables (`MCP_ORCHESTRATOR_CONFIG` and the rest)
+
+All of the orchestrator's environment variables are read from the process the host launches, so the
+simplest place to set them is the **`env` block of the server entry** in your host config — scoped
+to the orchestrator, explicit, and no machine-wide changes:
+
+```json
+{
+  "servers": {
+    "orchestrator": {
+      "type": "stdio",
+      "command": "mcp-orchestrator",
+      "env": { "MCP_ORCHESTRATOR_CONFIG": "C:/Users/you/my-orchestrator.config.json" }
+    }
+  }
+}
+```
+
+The same block is where you'd set `MCP_ORCHESTRATOR_DEBUG`. Alternatively set them as OS environment
+variables — **user-level**
+(e.g. Windows `setx`, or a shell rc file) or **machine-level** (needs admin) — but then **restart
+the MCP host**, since a child process captures its environment at launch.
 
 ---
 
@@ -543,27 +495,18 @@ a warning/error rather than crashing.
 dotnet test McpOrchestrator.slnx
 ```
 
-The `McpOrchestrator.Tests` project (xUnit) has 37 tests:
+The `McpOrchestrator.Tests` project (xUnit) covers:
 
-- **Unit** — catalog validation and dedup, `${VAR}` substitution, invalid-JSON resilience;
-  argument parsing (object / JSON-string / scalar / array / null / omitted); planner behavior
-  including a characterization test of its sentence-into-argument weakness.
+- **Unit** — catalog validation and dedup, `${VAR}` substitution, invalid-JSON resilience, and
+  argument parsing (object / JSON-string / scalar / array / null / omitted).
 - **Integration** — against the real demo server as a live downstream process: connect + list,
   call a tool, unknown capability, downstream failure surfaced as `isError`, **call timeout**,
   **connect timeout**, bad-command eviction, and 20-way concurrency on one cached connection.
-- **End-to-end** — the four tool methods driven through the full catalog → connection manager →
+- **End-to-end** — the tool methods driven through the full catalog → connection manager →
   downstream path, covering happy and error paths.
 
 Integration tests launch the compiled `McpOrchestrator.DemoMcp.dll` directly, so build the
 solution first (the test project references it, so a normal `dotnet test` does this for you).
-
-The local-LLM planner's deterministic parts (grammar generation, the two-step planning core with
-a fake completer, and the fallback decorator) are unit-tested without a model. A **live** test that
-downloads the real model and runs inference is gated behind an env flag so normal runs stay fast:
-
-```bash
-RUN_LLM_LIVE=1 dotnet test --filter FullyQualifiedName~LiveLocalLlmTests
-```
 
 ---
 
@@ -577,7 +520,6 @@ RUN_LLM_LIVE=1 dotnet test --filter FullyQualifiedName~LiveLocalLlmTests
 | **Visual Studio can't find the project / config.** | VS does not expand `${workspaceFolder}` in `.mcp.json` — use an absolute `--project` path. Open the `.slnx`, not a bare `.csproj`. |
 | **A capability times out on first call.** | First-run `npx` downloads the package, which can exceed the 60s connect default. Raise `connectTimeoutSeconds` for that capability. |
 | **`list_capabilities` is empty.** | The config wasn't found or failed to parse, or every entry was disabled / missing a `command`. Check stderr — loading logs the count, the path, and any parse error. |
-| **Garbled / wrong arguments via `request`.** | Expected — the heuristic planner has no language understanding. Use `discover_tools` + `route`. |
 | **Nothing appears on stdout / the protocol breaks.** | Never write to stdout from a server; it's reserved for MCP. All diagnostics go to stderr. |
 
 ---
@@ -594,11 +536,6 @@ which environment secrets) you expose to a downstream process. Downstream tool *
 
 ## Extending
 
-- **Real routing intelligence** — `request` selects a tool via `IRoutePlanner`. Two implementations
-  ship: the dependency-free `HeuristicRoutePlanner`, and the opt-in `LlmRoutePlanner` (embedded
-  local LLM, see [above](#optional-a-local-llm-for-request)), composed behind `FallbackRoutePlanner`.
-  The planner core is isolated behind a `ToolSpec`, so further alternatives (e.g. a cloud model or
-  a local Ollama endpoint) are easy to slot in.
 - **More transports** — `DownstreamConnectionManager` implements only `stdio`; add HTTP/SSE
   (the SDK ships an HTTP client transport) by branching on `descriptor.Transport`.
 - **Connection lifecycle** — lazy connect, per-capability cache, fault eviction, and timeouts are
@@ -609,30 +546,20 @@ which environment secrets) you expose to a downstream process. Downstream tool *
 ## Project layout
 
 ```
-McpOrchestrator/                         Core tool package — lean, no LLM dependency
+McpOrchestrator/                         The orchestrator tool package
   Program.cs                              Entry point: OrchestratorHost.RunAsync(args)
-  OrchestratorHost.cs                     Reusable host wiring (DI, MCP server) an LLM host can reuse
-  orchestrator.config.json               The downstream catalog (connections + instructions)
-  Tools/OrchestratorTool.cs              The 4 meta-tools: list_capabilities/discover_tools/route/request
+  OrchestratorHost.cs                     Host wiring (DI, MCP server)
+  orchestrator.config.template.json      Minimal template shipped with the installed tool
+  orchestrator.config.sample.json        Demo catalog (jira/codegen/files) the SmokeTest/IDE point at
+  Tools/OrchestratorTool.cs              The 3 meta-tools: list_capabilities/discover_tools/route
   Orchestration/
     CapabilityDescriptor.cs              Config POCO: one downstream MCP (+ OrchestratorConfig root)
     ICapabilityCatalog.cs                The address book of downstream capabilities
-    CapabilityCatalog.cs                 Loads + validates the catalog from JSON; resolves ${VAR} tokens
+    CapabilityCatalog.cs                 Loads + validates the catalog from JSON; resolves ${VAR} placeholders
     IDownstreamConnectionManager.cs      Contract: list/call downstream tools (+ CapabilityNotFoundException)
     DownstreamConnectionManager.cs       MCP client: lazy connect, cache, timeouts, proxy, dispose
-    IRoutePlanner.cs                     NL request → (tool, arguments) seam (RoutePlan)
-    HeuristicRoutePlanner.cs             Dependency-free planner (keyword match + arg extraction)
-    FallbackRoutePlanner.cs              Decorator: try primary planner, fall back to the heuristic
     ToolPayloads.cs                      Pure argument/result conversions (unit-tested)
     RoutingModels.cs                     DTOs returned to the agent (+ JSON options)
-
-McpOrchestrator.LocalLlm/                Optional fat tool package — core + embedded local LLM
-  Program.cs                              Entry point: reuses OrchestratorHost, injects the LLM planner
-  LocalLlmOptions.cs                      Env-bound options (model, cache, threads, …)
-  ModelProvisioner.cs                     Resolve/download the GGUF model (atomic, cached)
-  GbnfGrammar.cs                          Grammars constraining output to tool names / schema keys
-  LocalLlm.cs                             Lazy llama.cpp load + grammar-constrained completion
-  LlmRoutePlanner.cs                      Two-step constrained planning (select tool, extract args)
 
 McpOrchestrator.DemoMcp/                 Sample downstream MCP (personas: jira / codegen / diag)
 McpOrchestrator.SmokeTest/               Console MCP client that drives the orchestrator

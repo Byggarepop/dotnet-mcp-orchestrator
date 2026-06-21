@@ -7,8 +7,8 @@ namespace McpOrchestrator.Orchestration;
 /// <summary>
 /// Loads the downstream capability catalog from a JSON config file and resolves
 /// <c>${VAR}</c> placeholders in launch commands/paths/env. Resolution order for each
-/// placeholder: built-in tokens (<c>CONFIG_DIR</c>, <c>SOLUTION_DIR</c>) first, then
-/// process environment variables; unknown tokens are left untouched (and logged).
+/// placeholder: built-in placeholders (<c>CONFIG_DIR</c>, <c>SOLUTION_DIR</c>) first, then
+/// process environment variables; unknown placeholders are left untouched (and logged).
 /// </summary>
 public sealed partial class CapabilityCatalog : ICapabilityCatalog
 {
@@ -116,18 +116,18 @@ public sealed partial class CapabilityCatalog : ICapabilityCatalog
             return new CapabilityCatalog(Array.Empty<CapabilityDescriptor>());
         }
 
-        var tokens = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        var placeholders = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
         {
             ["CONFIG_DIR"] = Path.GetDirectoryName(configPath) ?? contentRoot,
             // The sample config locates sibling downstream projects via ${SOLUTION_DIR}.
             ["SOLUTION_DIR"] = solutionDir,
         };
 
-        // Resolve ${VAR} tokens first, then validate/dedupe. Disabled entries are skipped
+        // Resolve ${VAR} placeholders first, then validate/dedupe. Disabled entries are skipped
         // before resolution so their placeholders never need to resolve.
         var resolved = (config?.Capabilities ?? new())
             .Where(c => c.Enabled)
-            .Select(c => Resolve(c, tokens, logger));
+            .Select(c => Resolve(c, placeholders, logger));
 
         var catalog = FromDescriptors(resolved, logger);
 
@@ -140,14 +140,14 @@ public sealed partial class CapabilityCatalog : ICapabilityCatalog
 
     /// <summary>Applies <c>${VAR}</c> substitution in place to a descriptor's command, args, working dir, and env.</summary>
     private static CapabilityDescriptor Resolve(
-        CapabilityDescriptor c, IReadOnlyDictionary<string, string> tokens, ILogger logger)
+        CapabilityDescriptor c, IReadOnlyDictionary<string, string> placeholders, ILogger logger)
     {
-        c.Command = Substitute(c.Command, tokens, logger);
-        c.Args = c.Args.Select(a => Substitute(a, tokens, logger)).ToList();
-        c.WorkingDirectory = c.WorkingDirectory is null ? null : Substitute(c.WorkingDirectory, tokens, logger);
+        c.Command = Substitute(c.Command, placeholders, logger);
+        c.Args = c.Args.Select(a => Substitute(a, placeholders, logger)).ToList();
+        c.WorkingDirectory = c.WorkingDirectory is null ? null : Substitute(c.WorkingDirectory, placeholders, logger);
         c.Env = c.Env.ToDictionary(
             kv => kv.Key,
-            kv => kv.Value is null ? null : Substitute(kv.Value, tokens, logger));
+            kv => kv.Value is null ? null : Substitute(kv.Value, placeholders, logger));
         return c;
     }
 
@@ -191,8 +191,8 @@ public sealed partial class CapabilityCatalog : ICapabilityCatalog
         return null;
     }
 
-    /// <summary>Replaces <c>${TOKEN}</c> with a built-in token, then an env var; leaves unknowns as-is.</summary>
-    private static string Substitute(string value, IReadOnlyDictionary<string, string> tokens, ILogger logger)
+    /// <summary>Replaces a <c>${VAR}</c> placeholder with a built-in value, then an env var; leaves unknowns as-is.</summary>
+    private static string Substitute(string value, IReadOnlyDictionary<string, string> placeholders, ILogger logger)
     {
         if (string.IsNullOrEmpty(value) || !value.Contains("${", StringComparison.Ordinal))
         {
@@ -202,7 +202,7 @@ public sealed partial class CapabilityCatalog : ICapabilityCatalog
         return PlaceholderRegex().Replace(value, match =>
         {
             var key = match.Groups[1].Value;
-            if (tokens.TryGetValue(key, out var builtIn))
+            if (placeholders.TryGetValue(key, out var builtIn))
             {
                 return builtIn;
             }

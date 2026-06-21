@@ -8,7 +8,10 @@
         "--project",
         "${workspaceFolder}/McpOrchestrator/McpOrchestrator.csproj",
         "--no-build"
-      ]
+      ],
+      "env": {
+        "MCP_ORCHESTRATOR_CONFIG": "${workspaceFolder}/McpOrchestrator/orchestrator.config.sample.json"
+      }
     }
   }
 }

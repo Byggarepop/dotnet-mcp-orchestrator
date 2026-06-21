@@ -1,0 +1,40 @@
+// McpOrchestrator catalog — each entry under "capabilities" is one downstream MCP server.
+// Full configuration reference:
+//   https://github.com/Byggarepop/dotnet-mcp-orchestrator#configuration-reference
+//
+// Two ways to configure:
+//   A) Edit THIS file — add a capability for each MCP server you want the agent to reach, and
+//      set "enabled": true.
+//   B) Keep your config elsewhere — set the MCP_ORCHESTRATOR_CONFIG environment variable to the
+//      absolute path of your own config file (the orchestrator then loads that instead of this
+//      one, so a tool upgrade never overwrites your settings). Easiest is the "env" block of the
+//      server entry in your MCP host config (.mcp.json / .vscode/mcp.json):
+//          "env": { "MCP_ORCHESTRATOR_CONFIG": "C:/path/to/your-config.json" }
+//      Alternatively set it as a user/system environment variable (then restart the MCP host).
+//
+// Per-capability fields:
+//   "summary"      Required-ish. One line shown in list_capabilities; the agent uses it to pick
+//                  which capability to use.
+//   "instructions" OPTIONAL. A short when/why hint or convention (e.g. "use for sprint status").
+//                  You do NOT need to list the tools or their arguments here — the agent gets those
+//                  from the real downstream server via discover_tools. Leave it "" if not needed.
+//
+// Placeholders you can use in command / args / workingDirectory / env values:
+//   ${CONFIG_DIR}  -> the folder this config file lives in
+//   ${SOME_VAR}    -> the value of the SOME_VAR environment variable
+//
+// The single example below is DISABLED. As written it launches the official filesystem MCP server
+// (via npx) scoped to this file's folder. Enable it, or replace it with your own server.
+{
+  "capabilities": [
+    {
+      "name": "files",
+      "summary": "Filesystem access — list, read and search files under an allowed folder.",
+      "instructions": "Use when the task needs to read or search local files.",
+      "enabled": false,
+      "transport": "stdio",
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-filesystem", "${CONFIG_DIR}"]
+    }
+  ]
+}

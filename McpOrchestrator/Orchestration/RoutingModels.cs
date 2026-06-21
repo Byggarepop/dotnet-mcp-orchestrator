@@ -29,9 +29,9 @@ public sealed record ToolView(string Name, string? Description, JsonElement Inpu
 public sealed record DiscoverView(string Capability, IReadOnlyList<ToolView> Tools);
 
 /// <summary>
-/// The result of <c>route</c>/<c>request</c>: which downstream tool ran and what it
-/// returned. <see cref="Text"/> is the flattened text content; <see cref="Structured"/>
-/// carries any structured JSON the tool produced.
+/// The result of <c>route</c>: which downstream tool ran and what it returned. <see cref="Text"/>
+/// is the flattened text content; <see cref="Structured"/> carries any structured JSON the tool
+/// produced.
 /// </summary>
 public sealed record RouteView
 {
@@ -43,9 +43,6 @@ public sealed record RouteView
 
     /// <summary>The arguments actually sent downstream (echoed back so the call is auditable).</summary>
     public JsonNode? Arguments { get; init; }
-
-    /// <summary>For <c>request</c>: how the orchestrator chose the tool/arguments. Null for <c>route</c>.</summary>
-    public string? Rationale { get; init; }
 }
 
 /// <summary>A structured error returned to the model instead of throwing.</summary>

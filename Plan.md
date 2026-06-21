@@ -14,11 +14,11 @@ downstream servers).
 
 1. Agent calls `list_capabilities` → orchestrator returns the config-driven catalog (name +
    summary + instructions per downstream MCP).
-2. Agent expresses what it needs:
-   - `route(capability, tool, arguments)` — a specific downstream tool, or
-   - `request(capability, request)` — plain language; the orchestrator picks the tool.
-   (`discover_tools(capability)` lists a capability's tools + schemas in between.)
+2. Agent calls `discover_tools(capability)` to get that capability's tools + schemas, then
+   `route(capability, tool, arguments)` to invoke a specific tool with arguments it fills in.
 3. Orchestrator connects to that downstream MCP, invokes the tool, relays the result back.
+
+It's a **pure relay** — the orchestrator never interprets the agent's input.
 
 ## Status (2026-06-19) — PROTOTYPE WORKING
 
@@ -30,9 +30,7 @@ end-to-end by `McpOrchestrator.SmokeTest`:
 - `discover_tools` connects to a downstream MCP and relays its tool schemas.
 - `route` forwards a specific tool call (e.g. `jira/get_issue {issueKey:PROJ-1}`) and returns
   the result.
-- `request` routes a natural-language need (e.g. "status of PROJ-3") via `HeuristicRoutePlanner`
-  and returns the result + a rationale.
-- Routing across **two distinct** downstream servers (jira, codegen) works through the one
+- Routing across **distinct** downstream servers (jira, codegen, files) works through the one
   agent-facing surface; unknown capabilities return a structured error, not a crash.
 
 ## Architecture
@@ -42,10 +40,8 @@ end-to-end by `McpOrchestrator.SmokeTest`:
 - **Connection manager** (`IDownstreamConnectionManager` / `DownstreamConnectionManager`) — the
   MCP client: lazy connect per capability over stdio, cache, proxy `ListTools`/`CallTool`,
   dispose on shutdown, evict on failed connect.
-- **Route planner** (`IRoutePlanner` / `HeuristicRoutePlanner`) — turns a NL request into a
-  concrete tool call. The seam where a local/cloud LLM plugs in; the shipped planner is a
-  dependency-free heuristic.
-- **Tools** (`OrchestratorTool`) — the four meta-tools the agent sees.
+- **Tools** (`OrchestratorTool`) — the three meta-tools the agent sees
+  (`list_capabilities`, `discover_tools`, `route`).
 
 ## Tech
 
@@ -62,10 +58,9 @@ end-to-end by `McpOrchestrator.SmokeTest`:
 
 ## Next steps
 
-- LLM-backed `IRoutePlanner` (local Ollama/LM Studio) for real `request` routing.
 - Additional transports (HTTP/SSE) in the connection manager.
 - Optionally re-expose downstream tools directly (namespaced passthrough) in addition to the
-  `route`/`request` meta-tools, for agents that prefer calling tools by name.
+  `route` meta-tool, for agents that prefer calling tools by name.
 - Health/preflight for downstream servers; per-capability auth/secrets handling.
 
 ## Notes

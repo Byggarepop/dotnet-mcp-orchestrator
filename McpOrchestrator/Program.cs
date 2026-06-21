@@ -1,6 +1,4 @@
 using McpOrchestrator;
 
-// The lean orchestrator host: routes through the dependency-free heuristic planner for `request`.
-// For LLM-backed `request`, run the optional McpOrchestrator.LocalLlm package instead, which reuses
-// this same host and swaps in the local-model planner.
+// The orchestrator host: exposes the meta-tools and relays calls to the downstream MCP servers.
 await OrchestratorHost.RunAsync(args);
