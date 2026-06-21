@@ -6,7 +6,8 @@ name: release
 # NuGet publishing uses Trusted Publishing (OIDC) — no stored API key. nuget.org issues a
 # short-lived key to this workflow at run time. It is OFF by default; to enable it:
 #   1. nuget.org -> (your username) -> Trusted Publishing -> add a policy:
-#        Repository Owner: Byggarepop   Repository: dotnet-mcp-orchestrator   Workflow File: release.yml
+#        Repository Owner: Byggarepop   Repository: dotnet-mcp-orchestrator
+#        Workflow File: release.yml     Environment: release   (must match the job's environment below)
 #   2. add the repo secret   NUGET_USER    = your nuget.org username (profile name, NOT your email)
 #   3. set the repo variable PUBLISH_NUGET = true   (Settings -> Secrets and variables -> Actions)
 on:
@@ -64,6 +65,10 @@ jobs:
     name: release
     needs: build
     runs-on: ubuntu-latest
+    # The OIDC token carries this environment as a claim, so the nuget.org trusted-publishing policy
+    # can restrict publishing to it. GitHub auto-creates the environment; optionally add protection
+    # rules (e.g. a required reviewer) to gate releases. Keep this name in sync with the policy.
+    environment: release
     permissions:
       contents: write   # create the GitHub Release
       id-token: write   # request the OIDC token for NuGet trusted publishing
