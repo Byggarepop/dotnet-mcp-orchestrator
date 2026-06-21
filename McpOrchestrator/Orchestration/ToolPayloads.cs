@@ -1,5 +1,6 @@
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using ModelContextProtocol.Protocol;
 
 namespace McpOrchestrator.Orchestration;
@@ -11,6 +12,26 @@ namespace McpOrchestrator.Orchestration;
 /// </summary>
 internal static class ToolPayloads
 {
+    /// <summary>
+    /// Echoes the sent arguments back as a <see cref="JsonObject"/> for auditing. Built by parsing
+    /// each value's raw JSON rather than reflection-serializing an <c>object?</c> map, so it is
+    /// Native-AOT safe. Values produced by <see cref="ParseArguments"/> are <see cref="JsonElement"/>s.
+    /// </summary>
+    public static JsonNode ArgumentsToNode(IReadOnlyDictionary<string, object?> arguments)
+    {
+        var obj = new JsonObject();
+        foreach (var (key, value) in arguments)
+        {
+            obj[key] = value switch
+            {
+                JsonElement element => JsonNode.Parse(element.GetRawText()),
+                null => null,
+                _ => JsonValue.Create(value.ToString()),
+            };
+        }
+        return obj;
+    }
+
     private static readonly IReadOnlyDictionary<string, object?> Empty =
         new Dictionary<string, object?>();
 

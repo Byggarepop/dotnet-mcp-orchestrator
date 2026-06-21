@@ -37,9 +37,9 @@ public static class OrchestratorHost
         builder.Services
             .AddMcpServer()
             .WithStdioServerTransport()
-            // Register the meta-tools from the core assembly explicitly, so they are found
-            // regardless of which assembly is the process entry point.
-            .WithToolsFromAssembly(typeof(Tools.OrchestratorTool).Assembly);
+            // Register the meta-tools via the generic overload (source-generated, Native-AOT safe)
+            // rather than the reflection-based WithToolsFromAssembly.
+            .WithTools<Tools.OrchestratorTool>();
 
         await builder.Build().RunAsync();
     }

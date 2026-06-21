@@ -8,6 +8,10 @@
     <RootNamespace>McpOrchestrator</RootNamespace>
     <AssemblyName>McpOrchestrator</AssemblyName>
 
+    <!-- Native-AOT ready: turns on the trim/AOT analyzers so any reflection regression surfaces as
+         a build warning, even without running a full AOT publish. -->
+    <IsAotCompatible>true</IsAotCompatible>
+
     <!-- Packable as a .NET tool (install globally, then point .mcp.json at the
          `mcp-orchestrator` command). Framework-dependent and lightweight. -->
     <PackAsTool>true</PackAsTool>
@@ -25,6 +29,16 @@
     <PackageProjectUrl>https://github.com/Byggarepop/dotnet-mcp-orchestrator</PackageProjectUrl>
     <RepositoryUrl>https://github.com/Byggarepop/dotnet-mcp-orchestrator</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
+  </PropertyGroup>
+
+  <!-- Size/perf knobs that apply ONLY to a Native-AOT publish (pass -p:PublishAot=true). They are
+       intentionally NOT global: PublishAot is incompatible with PackAsTool, so the framework-
+       dependent tool package and normal builds must stay unaffected. StackTraceSupport is left at
+       its default (true) on purpose — disabling it saves size but loses exception stack traces in
+       logs, which a self-hosted server may need. -->
+  <PropertyGroup Condition="'$(PublishAot)' == 'true'">
+    <OptimizationPreference>Size</OptimizationPreference>
+    <InvariantGlobalization>true</InvariantGlobalization>
   </PropertyGroup>
 
   <ItemGroup>
