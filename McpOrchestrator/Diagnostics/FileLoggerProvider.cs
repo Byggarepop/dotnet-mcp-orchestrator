@@ -8,7 +8,7 @@ namespace McpOrchestrator.Diagnostics;
 /// file so the flow (config load, connects, tool calls, errors) can be inspected after the fact —
 /// stderr from an MCP child process is otherwise easy to lose.
 ///
-/// <para>By default it writes <c>%USERPROFILE%/.dotnet-orchestrator-mcp/orchestrator.log</c>
+/// <para>By default it writes <c>%USERPROFILE%/.mcpOrchestrator/orchestrator.log</c>
 /// (the folder is created if missing). Override the directory with
 /// <c>MCP_ORCHESTRATOR_LOG_DIR</c>, or disable file logging with
 /// <c>MCP_ORCHESTRATOR_LOG_DIR=off</c>. If a second instance already holds the main log, this one
@@ -18,7 +18,7 @@ namespace McpOrchestrator.Diagnostics;
 internal sealed class FileLoggerProvider : ILoggerProvider
 {
     private const string DirEnv = "MCP_ORCHESTRATOR_LOG_DIR";
-    private const string DefaultFolder = ".dotnet-orchestrator-mcp";
+    private const string DefaultFolder = ".mcpOrchestrator";
     private const long MaxBytes = 10 * 1024 * 1024; // rotate the active log past ~10 MB
 
     private readonly object _gate = new();

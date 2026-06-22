@@ -25,7 +25,7 @@ public static class OrchestratorHost
         builder.Logging.AddConsole(options => options.LogToStandardErrorThreshold = LogLevel.Trace);
 
         // Mirror the log to a file under the user's profile (stderr from an MCP child is easy to
-        // lose). Default: %USERPROFILE%/.dotnet-orchestrator-mcp/orchestrator.log; override the
+        // lose). Default: %USERPROFILE%/.mcpOrchestrator/orchestrator.log; override the
         // directory with MCP_ORCHESTRATOR_LOG_DIR, or disable with MCP_ORCHESTRATOR_LOG_DIR=off.
         var fileLogger = Diagnostics.FileLoggerProvider.Create();
         if (fileLogger is not null)

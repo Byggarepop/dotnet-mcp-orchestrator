@@ -33,7 +33,8 @@ config files** are involved:
 Two ways to get it, from two places:
 
 **A. The .NET tool, from [nuget.org](https://www.nuget.org/packages/McpOrchestrator)** — needs the
-.NET runtime; gives you the command `mcp-orchestrator`:
+.NET runtime. The package id is `McpOrchestrator`; installing it puts the command
+`mcp-orchestrator` on your PATH (that command, not the package id, is what you point the host at):
 
 ```bash
 dotnet tool install --global McpOrchestrator
@@ -52,9 +53,11 @@ The agent only ever sees *this one* server:
 ```jsonc
 {
   "servers": {
-    "dotnet-mcp-orchestrator": {
+    "orchestrator": {
       "type": "stdio",
-      // the installed tool command, or an absolute path to the AOT binary:
+      // Option A: the command the tool put on your PATH — `mcp-orchestrator`,
+      // NOT the package id `McpOrchestrator`. (Option B: the absolute path to the
+      // AOT binary instead.)
       "command": "mcp-orchestrator",
       "args": [],
       "env": {
@@ -110,7 +113,7 @@ The agent now sees the three meta-tools and the flow is
 
 > **Notes.** `instructions` is optional (a usage hint surfaced to the agent — leave it `""`).
 > `env`/`workingDirectory` are per-capability and optional. The config file supports `//` comments.
-> Logs are mirrored to `~/.dotnet-orchestrator-mcp/orchestrator.log`. See the
+> Logs are mirrored to `~/.mcpOrchestrator/orchestrator.log`. See the
 > [full documentation](https://github.com/Byggarepop/dotnet-mcp-orchestrator/blob/main/McpOrchestrator/README.md) for every field, packaging, and troubleshooting.
 
 ## Projects
