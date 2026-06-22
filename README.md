@@ -72,8 +72,10 @@ The agent only ever sees *this one* server:
 ### 3. List your downstream servers in the orchestrator config (`orchestrator.config.json`)
 
 This is the file you pointed `MCP_ORCHESTRATOR_CONFIG` at. Each entry is one capability the agent can
-route to; `command`/`args`/`env` are how that downstream MCP is launched (`${SOLUTION_DIR}`,
-`${CONFIG_DIR}`, and any `${ENV_VAR}` are substituted):
+route to; `command`/`args`/`env` are how that downstream MCP is launched. Use plain absolute paths
+here — you don't need any special syntax. Optionally, `${...}` placeholders are substituted if you
+want them: `${CONFIG_DIR}` (the folder this config lives in) and any `${ENV_VAR}` (a process
+environment variable, e.g. for API keys):
 
 ```jsonc
 {
@@ -96,7 +98,6 @@ route to; `command`/`args`/`env` are how that downstream MCP is launched (`${SOL
       "transport": "stdio",
       "command": "dotnet",
       "args": ["tool", "execute", "TokenSaver.Mcp", "--yes"],
-      "workingDirectory": "${SOLUTION_DIR}",
       "env": {
         "TOKENSAVER_API_URL": "https://tokensavermcp.com",
         "TOKENSAVER_UPDATE_INTERVAL_MINUTES": "0"
@@ -113,6 +114,9 @@ The agent now sees the three meta-tools and the flow is
 
 > **Notes.** `instructions` is optional (a usage hint surfaced to the agent — leave it `""`).
 > `env`/`workingDirectory` are per-capability and optional. The config file supports `//` comments.
+> There's also a `${SOLUTION_DIR}` placeholder, but you almost certainly don't need it — it resolves
+> to this repo's solution root and exists only so the in-repo sample configs can find sibling demo
+> servers. For your own setup, use absolute paths, `${CONFIG_DIR}`, or `${ENV_VAR}` instead.
 > Logs are mirrored to `~/.mcpOrchestrator/orchestrator.log`. See the
 > [full documentation](https://github.com/Byggarepop/dotnet-mcp-orchestrator/blob/main/McpOrchestrator/README.md) for every field, packaging, and troubleshooting.
 

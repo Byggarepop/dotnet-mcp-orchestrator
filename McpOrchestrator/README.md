@@ -463,8 +463,9 @@ to call and exactly what arguments to pass**. Be specific and prescriptive:
 
 ### Worked example: a real third-party server (no code you wrote)
 
-The shipped config includes a `files` capability backed by the official
-`@modelcontextprotocol/server-filesystem` reference server, launched via `npx`:
+Here's a `files` capability backed by the official
+`@modelcontextprotocol/server-filesystem` reference server, launched via `npx` (point it at any
+absolute path you want to expose):
 
 ```jsonc
 {
@@ -474,8 +475,7 @@ The shipped config includes a `files` capability backed by the official
   "enabled": true,
   "transport": "stdio",
   "command": "npx",
-  "args": ["-y", "@modelcontextprotocol/server-filesystem", "${SOLUTION_DIR}"],
-  "workingDirectory": "${SOLUTION_DIR}"
+  "args": ["-y", "@modelcontextprotocol/server-filesystem", "<ABSOLUTE-PATH-TO>/projects"]
 }
 ```
 
@@ -501,12 +501,15 @@ Each entry in `capabilities` is one downstream MCP server.
 | `connectTimeoutSeconds` | no | `60` | Deadline for launch + MCP handshake. A timeout faults the connect and evicts it. |
 | `callTimeoutSeconds` | no | `100` | Deadline for a single tool call / tool-list. A timeout faults the call but keeps the connection. |
 
-**`${VAR}` substitution** (in `command`, `args`, `workingDirectory`, and `env` values):
+**`${VAR}` substitution** (in `command`, `args`, `workingDirectory`, and `env` values). You don't
+need any of these — plain absolute paths work fine — but they're available if you want them:
 
-- `${SOLUTION_DIR}` — the repository root (built in).
 - `${CONFIG_DIR}` — the folder containing the config file (built in).
 - any other `${NAME}` — resolved from a **process environment variable**; an unresolved placeholder
   is left as-is and logged.
+- `${SOLUTION_DIR}` — this repository's solution root (built in). You almost certainly don't need
+  this: it exists so the in-repo sample configs can locate sibling demo servers. For your own setup,
+  prefer absolute paths, `${CONFIG_DIR}`, or `${ENV_VAR}`.
 
 **Config location** is resolved in this order, first hit wins:
 
