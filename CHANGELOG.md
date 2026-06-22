@@ -9,6 +9,8 @@ uses it as the GitHub Release notes — so keep an entry per released version.
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-06-22
+
 ### Changed
 - Renamed the default log folder from `~/.dotnet-orchestrator-mcp` to `~/.mcpOrchestrator`, aligning
   it with the `McpOrchestrator` name. Existing `~/.dotnet-orchestrator-mcp` folders are left in place
