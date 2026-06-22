@@ -9,6 +9,11 @@ uses it as the GitHub Release notes — so keep an entry per released version.
 
 ## [Unreleased]
 
+### Changed
+- Renamed the default log folder from `~/.dotnet-orchestrator-mcp` to `~/.mcpOrchestrator`, aligning
+  it with the `McpOrchestrator` name. Existing `~/.dotnet-orchestrator-mcp` folders are left in place
+  and can be deleted; override with `MCP_ORCHESTRATOR_LOG_DIR` as before.
+
 ## [0.1.0] - 2026-06-21
 
 First release.
@@ -20,7 +25,7 @@ First release.
   `${CONFIG_DIR}`, and environment-variable placeholders, plus a shipped template.
 - Lazy downstream MCP connections over stdio, with per-capability connect/call timeouts and
   eviction of failed connections.
-- File logging: the stderr log is mirrored to `~/.dotnet-orchestrator-mcp/orchestrator.log`
+- File logging: the stderr log is mirrored to `~/.mcpOrchestrator/orchestrator.log`
   (folder auto-created, ~10 MB rotation). Override the directory with `MCP_ORCHESTRATOR_LOG_DIR`,
   or disable with `MCP_ORCHESTRATOR_LOG_DIR=off`.
 - Native-AOT support: a ~10 MB self-contained binary (no .NET runtime), via source-generated JSON

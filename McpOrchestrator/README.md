@@ -552,8 +552,8 @@ The orchestrator logs to **stderr** (stdout is reserved for the MCP protocol), b
 captures a child's stderr where it's easy to lose — so the same log is also mirrored to a **file**:
 
 ```
-%USERPROFILE%/.dotnet-orchestrator-mcp/orchestrator.log      (Windows)
-$HOME/.dotnet-orchestrator-mcp/orchestrator.log              (Linux/macOS)
+%USERPROFILE%/.mcpOrchestrator/orchestrator.log      (Windows)
+$HOME/.mcpOrchestrator/orchestrator.log              (Linux/macOS)
 ```
 
 The folder is created if missing; the file shows the flow — config load, downstream connects, each
