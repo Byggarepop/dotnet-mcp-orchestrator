@@ -30,17 +30,19 @@ config files** are involved:
 
 ### 1. Get the orchestrator binary
 
-Pick one:
+Two ways to get it, from two places:
+
+**A. The .NET tool, from [nuget.org](https://www.nuget.org/packages/McpOrchestrator)** — needs the
+.NET runtime; gives you the command `mcp-orchestrator`:
 
 ```bash
-# A. As a .NET tool (needs the .NET runtime) — gives you the command `mcp-orchestrator`:
 dotnet tool install --global McpOrchestrator
 ```
 
-**B. As a self-contained Native-AOT binary** — a single executable, no .NET runtime required.
-Download it from the [GitHub Releases](https://github.com/Byggarepop/dotnet-mcp-orchestrator/releases)
-(`McpOrchestrator-<version>-<rid>.zip`) and unzip, or
-[build it yourself](https://github.com/Byggarepop/dotnet-mcp-orchestrator/blob/main/McpOrchestrator/README.md#native-aot-smallest-self-contained-binary-fastest-startup).
+**B. The self-contained Native-AOT binary, from
+[GitHub Releases](https://github.com/Byggarepop/dotnet-mcp-orchestrator/releases)** — a single
+executable, no .NET runtime required. Download `McpOrchestrator-<version>-<rid>.zip` and unzip (or
+[build it yourself](https://github.com/Byggarepop/dotnet-mcp-orchestrator/blob/main/McpOrchestrator/README.md#native-aot-smallest-self-contained-binary-fastest-startup)).
 You then use the absolute path to the binary as the command.
 
 ### 2. Add the orchestrator to your host config (`.mcp.json` / `.vscode/mcp.json`)
