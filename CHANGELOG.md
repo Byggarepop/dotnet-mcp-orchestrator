@@ -10,6 +10,22 @@ uses it as the GitHub Release notes — so keep an entry per released version.
 ## [Unreleased]
 
 ### Added
+- `init` subcommand that adopts an existing MCP host config in one step: `mcp-orchestrator init
+  <host-config>` lifts every stdio server out of `.mcp.json` / `.vscode/mcp.json` (or any
+  `mcpServers` / `servers` map — Cursor, Claude Desktop) into a generated `orchestrator.config.json`
+  (one capability each, with a `TODO` `summary` placeholder and no `instructions` — the summary
+  drives routing), backs up the host config, then rewrites it to launch only the orchestrator
+  pointed at the new catalog via `MCP_ORCHESTRATOR_CONFIG`. Remote (http/sse) servers are left in
+  place; the user only fills in the one-line `summary` per capability. `--dry-run` previews both
+  files, `--force` overwrites an existing catalog, `--command <path>` targets the AOT binary, and
+  `--dev-feed <path>` wires the orchestrator to run from a local folder feed (latest local build).
+- `pack-local.ps1`: packs the project as the pinned `9.9.9-dev` version into `nupkg/local-feed` and
+  evicts the cached copy, so a host launching the tool with `dotnet tool execute McpOrchestrator
+  --version 9.9.9-dev --source <feed> --yes` always runs the latest local code.
+
+### Changed
+- `instructions` is now an optional (nullable) capability field, omitted from output and from
+  `list_capabilities` when absent, rather than always emitted as an empty string.
 - `profile` subcommand that measures the token economics of progressive tool discovery — the delta
   between the naive "load every manifest every turn" baseline and the orchestrator's actual
   progressive cost. Two modes: `profile --config <path>` (static: resting floor, naive baseline, and
