@@ -18,6 +18,20 @@ you connect. It's a **pure relay** — the orchestrator never interprets the age
 👉 **Full documentation:** [`McpOrchestrator/README.md`](https://github.com/Byggarepop/dotnet-mcp-orchestrator/blob/main/McpOrchestrator/README.md) — how it
 works, setup, adding new MCPs, configuration reference, testing, and troubleshooting.
 
+## Is this tool for you? Check in one command — no install
+
+Before changing anything, see what the orchestrator would actually save for *your* servers. Point it
+at your existing MCP host config and it connects to each stdio server once, then prints the token
+savings — **nothing is installed and not a single file is changed** (needs the .NET SDK):
+
+```bash
+dotnet tool execute McpOrchestrator profile --host-config <your .mcp.json / Cursor / Claude Desktop config>
+```
+
+Remote (`http`/`sse`) servers can't be relayed and are skipped; everything else is measured in memory.
+If the numbers look good, set it up below — if not, you're done, with no cleanup. (Full details and a
+local-build variant: the [profiling guide](https://github.com/Byggarepop/dotnet-mcp-orchestrator/blob/main/McpOrchestrator/README.md#profiling-token-economics-profile).)
+
 ## Quick start
 
 Three steps from an existing MCP setup to running through the orchestrator.
