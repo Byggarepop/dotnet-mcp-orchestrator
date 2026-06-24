@@ -1,3 +1,7 @@
+using McpOrchestrator.Orchestration;
+using McpOrchestrator.Setup;
+using Microsoft.Extensions.Logging.Abstractions;
+
 namespace McpOrchestrator.Profiling;
 
 /// <summary>
@@ -88,23 +92,75 @@ public static class ProfileCommand
     private static async Task<ProfileReport> BuildReportAsync(
         ParsedArgs parsed, ITokenCounter counter, CancellationToken cancellationToken)
     {
+        // --host-config imports an existing MCP host config in memory (writes nothing) and measures
+        // it; --config measures an orchestrator config file. Either way, every stdio server is
+        // connected to once to size its manifest.
+        var catalog = parsed.HostConfigPath is not null ? ImportHostConfig(parsed.HostConfigPath) : null;
+        var source = parsed.HostConfigPath ?? parsed.ConfigPath;
+
         if (parsed.TracePath is not null)
         {
             Console.Error.WriteLine(
-                $"Measuring {parsed.ConfigPath} (connecting to each server to size its manifest) " +
+                $"Measuring {source} (connecting to each server to size its manifest) " +
                 $"and replaying {parsed.TracePath}…");
-            return await TraceProfiler.RunAsync(parsed.TracePath, parsed.ConfigPath!, counter, cancellationToken);
+            return catalog is not null
+                ? await TraceProfiler.RunAsync(parsed.TracePath, catalog, counter, cancellationToken)
+                : await TraceProfiler.RunAsync(parsed.TracePath, parsed.ConfigPath!, counter, cancellationToken);
         }
 
         Console.Error.WriteLine(
-            $"Measuring {parsed.ConfigPath} (connecting to each server once to size its manifest)…");
-        return await StaticProfiler.RunAsync(parsed.ConfigPath!, counter, cancellationToken);
+            $"Measuring {source} (connecting to each server once to size its manifest)…");
+        return catalog is not null
+            ? await StaticProfiler.RunAsync(catalog, counter, cancellationToken)
+            : await StaticProfiler.RunAsync(parsed.ConfigPath!, counter, cancellationToken);
+    }
+
+    /// <summary>
+    /// Reads an MCP host config and imports its stdio servers into an in-memory catalog. Writes
+    /// nothing — this is the read-only "would the orchestrator help me?" path. Remote (http/sse)
+    /// servers can't be relayed, so they're reported and left out of the measurement.
+    /// </summary>
+    private static ICapabilityCatalog ImportHostConfig(string hostConfigPath)
+    {
+        var path = Path.GetFullPath(hostConfigPath);
+        if (!File.Exists(path))
+        {
+            throw new FileNotFoundException($"host config not found at '{path}'.", path);
+        }
+
+        HostImportResult import;
+        try
+        {
+            import = HostConfigImport.Parse(File.ReadAllText(path));
+        }
+        catch (System.Text.Json.JsonException ex)
+        {
+            throw new InvalidDataException($"could not parse '{path}' as JSON: {ex.Message}", ex);
+        }
+
+        if (import.Imported.Count == 0)
+        {
+            throw new InvalidDataException(
+                $"no importable stdio servers found in '{path}'. The orchestrator only relays stdio " +
+                "servers; remote (http/sse) entries can't be profiled.");
+        }
+
+        Console.Error.WriteLine(
+            $"Imported {import.Imported.Count} stdio server(s) from {Path.GetFileName(path)}: {string.Join(", ", import.Imported)}.");
+        if (import.SkippedRemote.Count > 0)
+        {
+            Console.Error.WriteLine(
+                $"Skipped {import.SkippedRemote.Count} non-stdio server(s) (can't be relayed): {string.Join(", ", import.SkippedRemote)}.");
+        }
+
+        return CapabilityCatalog.FromDescriptors(import.Capabilities, NullLogger.Instance);
     }
 
     /// <summary>Parsed, validated command-line options for the subcommand.</summary>
     private sealed class ParsedArgs
     {
         public string? ConfigPath { get; private init; }
+        public string? HostConfigPath { get; private init; }
         public string? TracePath { get; private init; }
         public bool Json { get; private init; }
         public bool AssertFavorable { get; private init; }
@@ -112,7 +168,7 @@ public static class ProfileCommand
 
         public static ParsedArgs Parse(string[] args)
         {
-            string? config = null, trace = null, format = "table", tokenizer = "cl100k_base";
+            string? config = null, hostConfig = null, trace = null, format = "table", tokenizer = "cl100k_base";
             bool assertFavorable = false, help = false;
 
             for (var i = 0; i < args.Length; i++)
@@ -123,6 +179,9 @@ public static class ProfileCommand
                 {
                     case "--config":
                         config = inlineValue ?? Next(args, ref i, flag);
+                        break;
+                    case "--host-config":
+                        hostConfig = inlineValue ?? Next(args, ref i, flag);
                         break;
                     case "--trace":
                         trace = inlineValue ?? Next(args, ref i, flag);
@@ -159,6 +218,7 @@ public static class ProfileCommand
             return new ParsedArgs
             {
                 ConfigPath = config,
+                HostConfigPath = hostConfig,
                 TracePath = trace,
                 Json = format == "json",
                 AssertFavorable = assertFavorable,
@@ -168,12 +228,18 @@ public static class ProfileCommand
 
         public void Validate()
         {
-            if (ConfigPath is null)
+            if (ConfigPath is not null && HostConfigPath is not null)
+            {
+                throw new ArgumentException(
+                    "--config and --host-config are mutually exclusive: choose an orchestrator config OR an MCP host config to import.");
+            }
+
+            if (ConfigPath is null && HostConfigPath is null)
             {
                 throw new ArgumentException(
                     TracePath is null
-                        ? "a mode is required: --config <path> (static) or --trace <path> --config <path> (trace)."
-                        : "--trace requires --config <path> too: manifest sizes are measured from the config.");
+                        ? "a config is required: --config <path> (orchestrator config) or --host-config <path> (import an MCP host config)."
+                        : "--trace needs a config too: add --config <path> or --host-config <path> (manifest sizes are measured from it).");
             }
 
             if (AssertFavorable && TracePath is null)
@@ -203,6 +269,7 @@ public static class ProfileCommand
 
         USAGE
           mcp-orchestrator profile --config <path> [options]                          (static)
+          mcp-orchestrator profile --host-config <path> [options]                     (static, import)
           mcp-orchestrator profile --trace <session.jsonl> --config <path> [options]  (trace)
 
         MODES
@@ -212,13 +279,24 @@ public static class ProfileCommand
                    vs. naive baseline, load events, never-loaded savings, and break-even.
 
         OPTIONS
-          --config <path>        Orchestrator config to profile. Required in both modes.
+          --config <path>        Orchestrator config to profile.
+          --host-config <path>   Instead of an orchestrator config, point at an EXISTING MCP host
+                                 config (.mcp.json / .vscode/mcp.json / Cursor / Claude Desktop). Its
+                                 stdio servers are imported in memory and measured; NOTHING is written.
+                                 Remote (http/sse) servers can't be relayed, so they're skipped.
+                                 Mutually exclusive with --config; one of the two is required.
           --trace <path>         Session trace (JSONL) to replay. Selects trace mode.
           --format <table|json>  Output format. Default: table. JSON is a superset of the table.
           --tokenizer <name>     Token encoding. Default and only: cl100k_base.
           --assert-favorable     (trace) Exit 2 if the orchestrator is NOT favorable for the session.
                                  Gate a PR on "orchestrator stays favorable for the canonical session".
           -h, --help             Show this help.
+
+        TRY IT WITHOUT INSTALLING
+          One shot, no global install and nothing to uninstall (needs the .NET SDK):
+            dotnet tool execute McpOrchestrator profile --host-config <your-.mcp.json>
+          This connects to each of your stdio servers once to size its manifest, then prints how much
+          the orchestrator would save. It writes nothing — drop the command and you're done.
 
         GENERATING A TRACE
           Run the orchestrator with --trace-out <path> (or set MCP_ORCHESTRATOR_TRACE_OUT=<path>);

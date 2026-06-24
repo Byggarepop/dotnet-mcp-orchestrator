@@ -17,10 +17,18 @@ internal static class Profiler
     /// downstream server is the unavoidable cost of an accurate size — this is what "static, no
     /// session" means: the numbers come from the servers, not from guessing.
     /// </summary>
+    internal static Task<Measurement> MeasureAsync(
+        string configPath, ITokenCounter counter, CancellationToken cancellationToken) =>
+        MeasureAsync(CapabilityCatalog.LoadFromFile(configPath, NullLogger.Instance), counter, cancellationToken);
+
+    /// <summary>
+    /// Same measurement against an already-built catalog — the path <c>profile --host-config</c>
+    /// uses, where the catalog is imported in memory from an MCP host config rather than loaded
+    /// from an orchestrator config file (nothing is written to disk).
+    /// </summary>
     internal static async Task<Measurement> MeasureAsync(
-        string configPath, ITokenCounter counter, CancellationToken cancellationToken)
+        ICapabilityCatalog catalog, ITokenCounter counter, CancellationToken cancellationToken)
     {
-        var catalog = CapabilityCatalog.LoadFromFile(configPath, NullLogger.Instance);
         var floor = OrchestratorSurface.MeasureFloor(counter);
 
         await using var connections = new DownstreamConnectionManager(
@@ -50,10 +58,16 @@ public static class StaticProfiler
 {
     /// <summary>Builds the static profile report for a config file.</summary>
     public static async Task<ProfileReport> RunAsync(
-        string configPath, ITokenCounter counter, CancellationToken cancellationToken)
-    {
-        var m = await Profiler.MeasureAsync(configPath, counter, cancellationToken);
+        string configPath, ITokenCounter counter, CancellationToken cancellationToken) =>
+        Build(await Profiler.MeasureAsync(configPath, counter, cancellationToken), counter);
 
+    /// <summary>Builds the static profile report for an already-built catalog (host-config import).</summary>
+    public static async Task<ProfileReport> RunAsync(
+        ICapabilityCatalog catalog, ITokenCounter counter, CancellationToken cancellationToken) =>
+        Build(await Profiler.MeasureAsync(catalog, counter, cancellationToken), counter);
+
+    private static ProfileReport Build(Profiler.Measurement m, ITokenCounter counter)
+    {
         var reachable = m.Manifests.Where(x => x.Reachable).ToList();
         var unreachable = m.Manifests.Where(x => !x.Reachable).Select(x => x.Name).ToList();
         var naiveTotal = reachable.Sum(x => x.ManifestTokens);
@@ -84,11 +98,18 @@ public static class StaticProfiler
 /// </summary>
 public static class TraceProfiler
 {
-    /// <summary>Builds the trace profile report for a session trace measured against a config.</summary>
+    /// <summary>Builds the trace profile report for a session trace measured against a config file.</summary>
     public static async Task<ProfileReport> RunAsync(
-        string tracePath, string configPath, ITokenCounter counter, CancellationToken cancellationToken)
+        string tracePath, string configPath, ITokenCounter counter, CancellationToken cancellationToken) =>
+        Build(await Profiler.MeasureAsync(configPath, counter, cancellationToken), tracePath, counter);
+
+    /// <summary>Builds the trace profile report against an already-built catalog (host-config import).</summary>
+    public static async Task<ProfileReport> RunAsync(
+        string tracePath, ICapabilityCatalog catalog, ITokenCounter counter, CancellationToken cancellationToken) =>
+        Build(await Profiler.MeasureAsync(catalog, counter, cancellationToken), tracePath, counter);
+
+    private static ProfileReport Build(Profiler.Measurement m, string tracePath, ITokenCounter counter)
     {
-        var m = await Profiler.MeasureAsync(configPath, counter, cancellationToken);
         var turns = SessionTrace.ParseFile(tracePath);
         var replay = TraceReplay.Run(turns, m.Manifests, m.Floor.FloorTokens);
 

@@ -20,7 +20,51 @@ works, setup, adding new MCPs, configuration reference, testing, and troubleshoo
 
 ## Quick start
 
-Get the binary, point your agent at it, and list the downstream servers it should relay to. **Two
+Three steps from an existing MCP setup to running through the orchestrator.
+
+### 1. Install
+
+The .NET tool (needs the **.NET SDK** — `dotnet tool` ships with the SDK, not the runtime) puts the
+`mcp-orchestrator` command on your PATH:
+
+```bash
+dotnet tool install --global McpOrchestrator
+```
+
+> No .NET SDK? Download the self-contained Native-AOT binary from
+> [GitHub Releases](https://github.com/Byggarepop/dotnet-mcp-orchestrator/releases), unzip it, and use
+> the absolute path to the binary as the command (pass it to `init` below with `--command <path>`).
+> It needs no .NET at all.
+
+### 2. Init
+
+Point `init` at your existing MCP host config — `.mcp.json` (Claude Code, Visual Studio),
+`.vscode/mcp.json` (VS Code), or a Cursor / Claude Desktop config:
+
+```bash
+mcp-orchestrator init path/to/.mcp.json
+```
+
+It lifts every stdio server into a generated `orchestrator.config.json` (one capability each), backs
+up the original to `.bak`, then rewrites it to launch **only** the orchestrator — pointed at the new
+catalog via `MCP_ORCHESTRATOR_CONFIG`. Remote (http/sse) servers can't be relayed over stdio, so
+they're left in place untouched. (Add `--dry-run` to preview both files first.)
+
+### 3. Add summary text
+
+Open the generated `orchestrator.config.json` and replace each capability's `TODO` `summary` with a
+one-line description of when the agent should use it — that line is what the agent reads to route.
+Then restart your MCP host.
+
+That's it. The agent now sees three meta-tools and the flow is
+`list_capabilities` → `discover_tools("…")` → `route("…", "<tool>", { … })`.
+
+> Starting from scratch with no MCP config yet? See [Manual setup](#manual-setup) for the two files
+> `init` would otherwise generate. Logs are mirrored to `~/.mcpOrchestrator/orchestrator.log`.
+
+## Manual setup
+
+`init` automates this; do it by hand if you have no host config yet or want full control. **Two
 config files** are involved:
 
 - **Host config** — your agent's existing MCP file: `.mcp.json` (Claude Code and Visual Studio) or
@@ -28,25 +72,7 @@ config files** are involved:
 - **Orchestrator config** — a new file you create (e.g. `orchestrator.config.json`), pointed to by
   the `MCP_ORCHESTRATOR_CONFIG` environment variable. It lists the downstream MCP servers.
 
-### 1. Get the orchestrator binary
-
-Two ways to get it, from two places:
-
-**A. The .NET tool, from [nuget.org](https://www.nuget.org/packages/McpOrchestrator)** — needs the
-.NET runtime. The package id is `McpOrchestrator`; installing it puts the command
-`mcp-orchestrator` on your PATH (that command, not the package id, is what you point the host at):
-
-```bash
-dotnet tool install --global McpOrchestrator
-```
-
-**B. The self-contained Native-AOT binary, from
-[GitHub Releases](https://github.com/Byggarepop/dotnet-mcp-orchestrator/releases)** — a single
-executable, no .NET runtime required. Download `McpOrchestrator-<version>-<rid>.zip` and unzip (or
-[build it yourself](https://github.com/Byggarepop/dotnet-mcp-orchestrator/blob/main/McpOrchestrator/README.md#native-aot-smallest-self-contained-binary-fastest-startup)).
-You then use the absolute path to the binary as the command.
-
-### 2. Add the orchestrator to your host config (`.mcp.json` / `.vscode/mcp.json`)
+### 1. Add the orchestrator to your host config (`.mcp.json` / `.vscode/mcp.json`)
 
 The agent only ever sees *this one* server:
 
@@ -55,13 +81,12 @@ The agent only ever sees *this one* server:
   "servers": {
     "orchestrator": {
       "type": "stdio",
-      // Option A: the command the tool put on your PATH — `mcp-orchestrator`,
-      // NOT the package id `McpOrchestrator`. (Option B: the absolute path to the
-      // AOT binary instead.)
+      // The command the tool put on your PATH — `mcp-orchestrator`, NOT the package
+      // id `McpOrchestrator`. (Or the absolute path to the AOT binary instead.)
       "command": "mcp-orchestrator",
       "args": [],
       "env": {
-        // absolute path to the orchestrator config you create in step 3:
+        // absolute path to the orchestrator config you create in step 2:
         "MCP_ORCHESTRATOR_CONFIG": "<ABSOLUTE-PATH-TO>/orchestrator.config.json"
       }
     }
@@ -69,7 +94,7 @@ The agent only ever sees *this one* server:
 }
 ```
 
-### 3. List your downstream servers in the orchestrator config (`orchestrator.config.json`)
+### 2. List your downstream servers in the orchestrator config (`orchestrator.config.json`)
 
 This is the file you pointed `MCP_ORCHESTRATOR_CONFIG` at. Each entry is one capability the agent can
 route to; `command`/`args`/`env` are how that downstream MCP is launched. Use plain absolute paths
@@ -83,7 +108,6 @@ environment variable, e.g. for API keys):
     {
       "name": "files",
       "summary": "Read and write files on the local machine.",
-      "instructions": "",
       "enabled": true,
       "transport": "stdio",
       "command": "npx",
@@ -93,7 +117,6 @@ environment variable, e.g. for API keys):
     {
       "name": "Tokensaver",
       "summary": "Reduce tokens spent when working with .NET (outline/minify/trace DI).",
-      "instructions": "",
       "enabled": true,
       "transport": "stdio",
       "command": "dotnet",
@@ -107,18 +130,24 @@ environment variable, e.g. for API keys):
 }
 ```
 
-### 4. Restart the MCP host
+Restart the MCP host to pick it up.
 
 The agent now sees the three meta-tools and the flow is
 `list_capabilities` → `discover_tools("Tokensaver")` → `route("Tokensaver", "outline_c_sharp_file", { … })`.
 
-> **Notes.** `instructions` is optional (a usage hint surfaced to the agent — leave it `""`).
-> `env`/`workingDirectory` are per-capability and optional. The config file supports `//` comments.
-> There's also a `${SOLUTION_DIR}` placeholder, but you almost certainly don't need it — it resolves
-> to this repo's solution root and exists only so the in-repo sample configs can find sibling demo
-> servers. For your own setup, use absolute paths, `${CONFIG_DIR}`, or `${ENV_VAR}` instead.
-> Logs are mirrored to `~/.mcpOrchestrator/orchestrator.log`. See the
+> **Notes.** `summary` is what the agent routes on. `instructions` is an optional usage hint surfaced
+> to the agent — omit it unless a capability needs one. `env`/`workingDirectory` are per-capability and
+> optional. The config file supports `//` comments. There's also a `${SOLUTION_DIR}` placeholder, but
+> you almost certainly don't need it — it resolves to this repo's solution root and exists only so the
+> in-repo sample configs can find sibling demo servers. For your own setup, use absolute paths,
+> `${CONFIG_DIR}`, or `${ENV_VAR}` instead. Logs are mirrored to `~/.mcpOrchestrator/orchestrator.log`.
+> See the
 > [full documentation](https://github.com/Byggarepop/dotnet-mcp-orchestrator/blob/main/McpOrchestrator/README.md) for every field, packaging, and troubleshooting.
+
+> **Testing a local build?** `pack-local.ps1` packs the project as a pinned `9.9.9-dev` version into
+> `nupkg/local-feed`; then `init --dev-feed nupkg/local-feed` wires the host to launch the
+> orchestrator from that feed, so it always runs your latest local code. Re-run `pack-local.ps1` and
+> restart the host to pick up changes.
 
 ## Projects
 

@@ -23,10 +23,11 @@ public sealed class CapabilityDescriptor
     public string Summary { get; set; } = string.Empty;
 
     /// <summary>
-    /// Usage guidance shown to the model: when to pick this capability and what to
-    /// provide (e.g. "include the issue key like PROJ-123 when you have it").
+    /// Optional usage guidance shown to the model: when to pick this capability and what to
+    /// provide (e.g. "include the issue key like PROJ-123 when you have it"). <c>null</c> when
+    /// absent — the summary alone drives routing for a capable model — so it is omitted from output.
     /// </summary>
-    public string Instructions { get; set; } = string.Empty;
+    public string? Instructions { get; set; }
 
     /// <summary>When false the capability is ignored (not advertised, not connectable).</summary>
     public bool Enabled { get; set; } = true;
