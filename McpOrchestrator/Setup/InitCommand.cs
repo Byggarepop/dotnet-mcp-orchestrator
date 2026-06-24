@@ -135,85 +135,20 @@ public static class InitCommand
         string hostConfigText, string sourceLabel, string outConfigPath,
         string orchestratorCommand, IReadOnlyList<string>? orchestratorArgs = null)
     {
-        var root = JsonNode.Parse(hostConfigText, documentOptions: new JsonDocumentOptions
+        // Classify every server (shared with `profile --host-config`); init then mutates the same DOM.
+        var import = HostConfigImport.Parse(hostConfigText);
+
+        // Drop the imported servers (replaced by the single orchestrator entry) and any pre-existing
+        // orchestrator entry — re-adding a fresh one below keeps re-running init idempotent. Remote
+        // servers are left in place so they keep working alongside the orchestrator.
+        foreach (var key in import.Imported.Concat(import.OrchestratorKeys))
         {
-            CommentHandling = JsonCommentHandling.Skip,
-            AllowTrailingCommas = true,
-        }) as JsonObject
-            ?? throw new InvalidDataException("the host config root must be a JSON object.");
-
-        // Claude Code / Cursor / Claude Desktop use "mcpServers"; VS Code / Visual Studio use "servers".
-        var containerKey = root.ContainsKey("mcpServers") ? "mcpServers"
-            : root.ContainsKey("servers") ? "servers"
-            : throw new InvalidDataException(
-                "no \"mcpServers\" or \"servers\" object found in the host config.");
-
-        if (root[containerKey] is not JsonObject container)
-        {
-            throw new InvalidDataException($"the \"{containerKey}\" entry must be a JSON object.");
-        }
-
-        var capabilities = new List<CapabilityDescriptor>();
-        var imported = new List<string>();
-        var skippedRemote = new List<string>();
-        var keysToRemove = new List<string>();
-
-        foreach (var (name, value) in container)
-        {
-            if (value is not JsonObject server)
-            {
-                continue;
-            }
-
-            // A pre-existing orchestrator entry is not a downstream server — drop it; we re-add a
-            // fresh one below so re-running init is idempotent.
-            if (IsOrchestratorEntry(server))
-            {
-                keysToRemove.Add(name);
-                continue;
-            }
-
-            var command = AsString(server["command"]);
-            var isRemote = server["url"] is not null
-                || string.Equals(AsString(server["type"]), "http", StringComparison.OrdinalIgnoreCase)
-                || string.Equals(AsString(server["type"]), "sse", StringComparison.OrdinalIgnoreCase);
-
-            if (isRemote || string.IsNullOrWhiteSpace(command))
-            {
-                // Remote servers (and anything without a launch command) can't be relayed over stdio.
-                // Leave them in the host config so they keep working alongside the orchestrator.
-                skippedRemote.Add(name);
-                continue;
-            }
-
-            capabilities.Add(new CapabilityDescriptor
-            {
-                Name = name,
-                // A visible TODO (rather than "") so it's obvious a human must fill this in. Until
-                // they do, the agent sees this text as the routing hint — replace it before relying
-                // on routing.
-                Summary = $"TODO: Add one line on when the agent should use '{name}'.",
-                // Instructions left null (omitted from output): the summary alone drives routing.
-                // Add an "instructions" hint by hand only if a capability needs one.
-                Enabled = true,
-                Transport = "stdio",
-                Command = command,
-                Args = AsStringList(server["args"]),
-                WorkingDirectory = AsString(server["cwd"]) ?? AsString(server["workingDirectory"]),
-                Env = AsStringDict(server["env"]),
-            });
-            imported.Add(name);
-            keysToRemove.Add(name);
-        }
-
-        foreach (var key in keysToRemove)
-        {
-            container.Remove(key);
+            import.Container.Remove(key);
         }
 
         // The single entry the agent now sees. Only the "servers" shape conventionally carries "type".
         var orchestrator = new JsonObject();
-        if (containerKey == "servers")
+        if (import.ContainerKey == "servers")
         {
             orchestrator["type"] = "stdio";
         }
@@ -230,13 +165,13 @@ public static class InitCommand
         {
             ["MCP_ORCHESTRATOR_CONFIG"] = outConfigPath,
         };
-        container["orchestrator"] = orchestrator;
+        import.Container["orchestrator"] = orchestrator;
 
-        var newHostText = root.ToJsonString(new JsonSerializerOptions { WriteIndented = true });
+        var newHostText = import.Root.ToJsonString(new JsonSerializerOptions { WriteIndented = true });
 
-        var configText = BuildConfigText(capabilities, sourceLabel);
+        var configText = BuildConfigText(import.Capabilities.ToList(), sourceLabel);
 
-        return new InitPlan(newHostText, configText, imported, skippedRemote, containerKey);
+        return new InitPlan(newHostText, configText, import.Imported, import.SkippedRemote, import.ContainerKey);
     }
 
     // The generated catalog is a human-edited file, so use the relaxed encoder: don't escape '<',
@@ -259,28 +194,6 @@ public static class InitCommand
         header.AppendLine("// \"instructions\" when/how hint can be added by hand, but the summary usually suffices.");
         header.AppendLine("// Reference: https://github.com/Byggarepop/dotnet-mcp-orchestrator#configuration-reference");
         return header.ToString() + json + Environment.NewLine;
-    }
-
-    /// <summary>True when a host-config entry is the orchestrator itself (so init never imports or duplicates it).</summary>
-    private static bool IsOrchestratorEntry(JsonObject server)
-    {
-        var command = AsString(server["command"]);
-        if (command is not null)
-        {
-            var leaf = Path.GetFileNameWithoutExtension(command);
-            if (leaf.Contains("mcp-orchestrator", StringComparison.OrdinalIgnoreCase))
-            {
-                return true;
-            }
-        }
-
-        if (server["env"] is JsonObject env && env.ContainsKey("MCP_ORCHESTRATOR_CONFIG"))
-        {
-            return true;
-        }
-
-        return AsStringList(server["args"]).Any(a =>
-            a.Contains("McpOrchestrator.csproj", StringComparison.OrdinalIgnoreCase));
     }
 
     /// <summary>Copies the host config to a sibling <c>.bak</c> file, avoiding clobbering an earlier backup.</summary>
@@ -330,29 +243,6 @@ public static class InitCommand
         w.WriteLine("Next:");
         w.WriteLine($"  1. Open {Path.GetFileName(outPath)} and add a one-line \"summary\" for each capability.");
         w.WriteLine("  2. Restart your MCP host so it picks up the orchestrator.");
-    }
-
-    // --- JsonNode readers (tolerant: coerce scalars to string, ignore the unexpected) ---
-
-    private static string? AsString(JsonNode? node) =>
-        node is JsonValue v && v.TryGetValue<string>(out var s) ? s : node?.ToString();
-
-    private static List<string> AsStringList(JsonNode? node) =>
-        node is JsonArray arr
-            ? arr.Where(a => a is not null).Select(a => AsString(a) ?? string.Empty).ToList()
-            : new List<string>();
-
-    private static Dictionary<string, string?> AsStringDict(JsonNode? node)
-    {
-        var result = new Dictionary<string, string?>();
-        if (node is JsonObject obj)
-        {
-            foreach (var (key, value) in obj)
-            {
-                result[key] = AsString(value);
-            }
-        }
-        return result;
     }
 
     /// <summary>The result of <see cref="Plan"/>: the two file bodies plus what was imported/skipped.</summary>

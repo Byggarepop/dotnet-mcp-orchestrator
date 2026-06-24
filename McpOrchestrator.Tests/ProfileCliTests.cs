@@ -45,7 +45,7 @@ public sealed class ProfileCliTests
     {
         var (code, _, stderr) = await Run();
         Assert.Equal(1, code);
-        Assert.Contains("mode is required", stderr);
+        Assert.Contains("config is required", stderr);
     }
 
     [Fact]
@@ -87,6 +87,32 @@ public sealed class ProfileCliTests
         var (code, _, stderr) = await Run("--config", missing);
         Assert.Equal(1, code);
         Assert.Contains("not found", stderr);
+    }
+
+    [Fact]
+    public async Task Config_and_host_config_together_is_an_error()
+    {
+        var (code, _, stderr) = await Run("--config", "a.json", "--host-config", "b.json");
+        Assert.Equal(1, code);
+        Assert.Contains("mutually exclusive", stderr);
+    }
+
+    [Fact]
+    public async Task Missing_host_config_file_fails_loudly()
+    {
+        var missing = Path.Combine(Path.GetTempPath(), $"no-such-host-{Guid.NewGuid():N}.json");
+        var (code, _, stderr) = await Run("--host-config", missing);
+        Assert.Equal(1, code);
+        Assert.Contains("not found", stderr);
+    }
+
+    [Fact]
+    public async Task Help_mentions_the_host_config_try_path()
+    {
+        var (code, stdout, _) = await Run("--help");
+        Assert.Equal(0, code);
+        Assert.Contains("--host-config", stdout);
+        Assert.Contains("dotnet tool execute", stdout);
     }
 
     [Theory]

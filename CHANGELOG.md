@@ -22,6 +22,12 @@ uses it as the GitHub Release notes — so keep an entry per released version.
 - `pack-local.ps1`: packs the project as the pinned `9.9.9-dev` version into `nupkg/local-feed` and
   evicts the cached copy, so a host launching the tool with `dotnet tool execute McpOrchestrator
   --version 9.9.9-dev --source <feed> --yes` always runs the latest local code.
+- `profile --host-config <path>`: a read-only "try before you keep it" path. Points the profiler at
+  an existing MCP host config (`.mcp.json` / `.vscode/mcp.json` / Cursor / Claude Desktop) instead of
+  an orchestrator config — its stdio servers are imported in memory and measured, **writing
+  nothing** (remote http/sse servers are listed and skipped). Run it as a one-shot with
+  `dotnet tool execute McpOrchestrator profile --host-config <path>` (or `dnx …`) to see the savings
+  with no global install and nothing to uninstall. The host-config parser is shared with `init`.
 
 ### Changed
 - `instructions` is now an optional (nullable) capability field, omitted from output and from
