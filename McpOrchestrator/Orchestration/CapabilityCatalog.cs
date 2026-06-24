@@ -132,6 +132,56 @@ public sealed partial class CapabilityCatalog : ICapabilityCatalog
         return catalog;
     }
 
+    /// <summary>
+    /// Loads the catalog from an explicit file path (used by the <c>profile</c> command). Unlike
+    /// <see cref="Load"/>, which degrades to an empty catalog so the server always starts, this
+    /// throws on a missing or unparseable file — a CLI told exactly which file to read should fail
+    /// loudly rather than silently profile nothing. Applies the same <c>${CONFIG_DIR}</c> /
+    /// <c>${SOLUTION_DIR}</c> / <c>${ENV_VAR}</c> substitution as <see cref="Load"/>.
+    /// </summary>
+    /// <exception cref="FileNotFoundException">The config file does not exist.</exception>
+    /// <exception cref="InvalidDataException">The config file could not be read or parsed.</exception>
+    internal static CapabilityCatalog LoadFromFile(string configPath, ILogger logger)
+    {
+        var fullPath = Path.GetFullPath(configPath);
+        if (!File.Exists(fullPath))
+        {
+            throw new FileNotFoundException($"Orchestrator config not found at '{fullPath}'.", fullPath);
+        }
+
+        OrchestratorConfig? config;
+        try
+        {
+            config = JsonSerializer.Deserialize(File.ReadAllText(fullPath), OrchestratorConfigJsonContext.Default.OrchestratorConfig);
+        }
+        catch (Exception ex) when (ex is JsonException or IOException or UnauthorizedAccessException)
+        {
+            throw new InvalidDataException($"Failed to read or parse orchestrator config at '{fullPath}': {ex.Message}", ex);
+        }
+
+        var configDir = Path.GetDirectoryName(fullPath) ?? Directory.GetCurrentDirectory();
+        var solutionDir =
+            FindAncestorContaining("McpOrchestrator.slnx", AppContext.BaseDirectory)
+            ?? FindAncestorContaining("McpOrchestrator.slnx", configDir)
+            ?? configDir;
+
+        var placeholders = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["CONFIG_DIR"] = configDir,
+            ["SOLUTION_DIR"] = solutionDir,
+        };
+
+        var resolved = (config?.Capabilities ?? new())
+            .Where(c => c.Enabled)
+            .Select(c => Resolve(c, placeholders, logger));
+
+        var catalog = FromDescriptors(resolved, logger);
+        logger.LogInformation(
+            "Loaded {Count} capability/capabilities from {ConfigPath} for profiling.",
+            catalog.Capabilities.Count, fullPath);
+        return catalog;
+    }
+
     /// <summary>Applies <c>${VAR}</c> substitution in place to a descriptor's command, args, working dir, and env.</summary>
     private static CapabilityDescriptor Resolve(
         CapabilityDescriptor c, IReadOnlyDictionary<string, string> placeholders, ILogger logger)

@@ -1,0 +1,14 @@
+// Sample session trace for `mcp-orchestrator profile --trace`. One JSON object per line: a turn
+// and the discover/route events in it. Blank lines, `//` comments, and a leading {"type":"header"}
+// line are ignored. This pairs with orchestrator.config.sample.json — replay it with:
+//
+//   mcp-orchestrator profile --trace McpOrchestrator/session.sample.jsonl \
+//     --config McpOrchestrator/orchestrator.config.sample.json
+//
+// It touches jira and codegen and never touches files, so the report shows the never-loaded
+// savings (files' manifest is never paid). A real run produces this automatically via --trace-out.
+{"turn": 1, "events": [{"type": "discover_tools", "capability": "jira", "tool": null}]}
+{"turn": 2, "events": [{"type": "route", "capability": "jira", "tool": "get_issue"}]}
+{"turn": 3, "events": []}
+{"turn": 4, "events": [{"type": "discover_tools", "capability": "codegen", "tool": null}]}
+{"turn": 5, "events": [{"type": "route", "capability": "codegen", "tool": "generate_class"}]}

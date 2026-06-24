@@ -41,19 +41,20 @@ the agent sends. The agent does all the thinking. The orchestrator is therefore 
 1. [How it works](#how-it-works)
 2. [The three tools](#the-three-tools-agent-facing-surface)
 3. [Token scaling](#token-scaling)
-4. [How it compares](#how-it-compares)
-5. [Prerequisites](#prerequisites)
-6. [Build & run the demo](#build--run-the-demo)
-7. [Register the orchestrator with an agent](#register-the-orchestrator-with-an-agent)
-8. [Packaging — install as a .NET tool](#packaging-install-as-a-net-tool)
-9. [Add a new downstream MCP](#add-a-new-downstream-mcp)
-10. [Configuration reference](#configuration-reference)
-11. [Testing](#testing)
-12. [Troubleshooting & pitfalls](#troubleshooting--pitfalls)
-13. [Security](#security)
-14. [Extending](#extending)
-15. [Project layout](#project-layout)
-16. [Debugging](#debugging)
+4. [Profiling token economics (`profile`)](#profiling-token-economics-profile)
+5. [How it compares](#how-it-compares)
+6. [Prerequisites](#prerequisites)
+7. [Build & run the demo](#build--run-the-demo)
+8. [Register the orchestrator with an agent](#register-the-orchestrator-with-an-agent)
+9. [Packaging — install as a .NET tool](#packaging-install-as-a-net-tool)
+10. [Add a new downstream MCP](#add-a-new-downstream-mcp)
+11. [Configuration reference](#configuration-reference)
+12. [Testing](#testing)
+13. [Troubleshooting & pitfalls](#troubleshooting--pitfalls)
+14. [Security](#security)
+15. [Extending](#extending)
+16. [Project layout](#project-layout)
+17. [Debugging](#debugging)
 
 ---
 
@@ -194,6 +195,123 @@ discovered-tools block is exactly part of one turn's small `cache_write`, then r
 re-reading the *entire* tool catalog every turn, and instead pay a small one-time write per
 capability you actually discover. (The same ~5-minute cache TTL applies to both; a gap longer than
 that re-writes the prefix regardless of approach.)
+
+---
+
+## Profiling token economics (`profile`)
+
+The [Token scaling](#token-scaling) section makes a claim; the **`profile`** subcommand measures it.
+It reports the one number nothing else does: the **delta** between the naive "load every server's
+manifest, every turn" baseline and the orchestrator's actual *progressive* cost — and whether the
+routing actually paid off over a real session.
+
+```bash
+mcp-orchestrator profile --config orchestrator.config.json                 # static
+mcp-orchestrator profile --trace session.jsonl --config orchestrator.config.json   # realized
+```
+
+Token counts use a **local `cl100k_base` tokenizer** (the Claude/GPT-4-class BPE), embedded so it's
+offline, deterministic, and CI-friendly. It's an approximation across model families, so every run
+discloses the tokenizer and a **±10% cross-model tolerance** — not exact per-model accounting. (The
+counting layer is behind an `ITokenCounter` interface, so a real-API-`usage` backend can be swapped
+in later without touching the profiler.)
+
+### Static mode — `--config`
+
+Connects to each server once to size its manifest, then reports the resting floor, the naive
+baseline, and the envelope. Deterministic and easy to assert on in CI. *Illustrative output (12
+servers):*
+
+```
+  RESTING STATE
+    orchestrator system prompt          0     ← this orchestrator's guidance lives in the tool
+    meta-tools (list/discover/route)  473       descriptions, so the "system prompt" part is 0
+    ──────────────────────────────────────
+    resting floor                     473 tokens / turn
+
+  NAIVE BASELINE  (all manifests loaded upfront, every turn)
+    naive total            47    29,730 tokens / turn
+
+  ENVELOPE  (over a session — static estimate)
+    best case   (0 servers routed)        473 / turn
+    worst case  (all 12 routed)        30,203 / turn   ← higher than naive, on purpose
+    naive (the thing you're beating)   29,730 / turn   ← flat, paid every turn
+```
+
+The **worst case is intentionally higher than naive**: orchestrated worst case means you paid the
+routing floor *and* still loaded everything. Reporting that honestly is the point — the orchestrator
+only wins if a session touches fewer servers than the break-even.
+
+### Trace mode — `--trace … --config …`
+
+Replays a recorded session into the realized curve. The trace supplies the *trajectory* (which
+servers were touched, when); the config supplies the *sizes*. *Illustrative output:*
+
+```
+  PER-TURN  (orchestrated actual vs. naive baseline)
+    turn  loaded this turn        active    naive    saved
+    ──────────────────────────────────────────────────────
+     1    —                          473   29,730   29,257
+     2    +github (14 tools)      11,713   29,730   18,017
+     3    +postgres (9 tools)     17,893   29,730   11,837
+     4    +slack (11 tools)       22,813   29,730    6,917
+    ──────────────────────────────────────────────────────
+    net saved                    66,028 tokens  (55.5%)
+
+  LOAD EVENTS
+    turn 2  github     triggered by discover_tools()
+    9 servers never loaded — 7,390 tokens of manifest never paid
+
+  BREAK-EVEN
+    orchestrator overhead repaid at turn 1
+```
+
+`active` is **cumulative-resident** (sticky): once a manifest is pulled in by `discover_tools` it
+stays paid every later turn — which is why `saved` *shrinks* as a session touches more servers. That
+erosion is the real story. Two things the report never hides:
+
+- **"N servers never loaded — X tokens never paid"** is the quiet kill-shot — manifest tokens you'd
+  have paid every turn under a flat config and never did.
+- When a session touches most servers early, the orchestrator **loses**, and the break-even section
+  says so plainly: *"overhead never repaid — naive would have been N tokens cheaper … orchestrator
+  is the wrong choice for this workload."* (The in-repo demo's three tiny servers are deliberately
+  such a case: their manifests are smaller than the meta-tool floor.)
+
+> **Sticky, not evictable.** This orchestrator never retracts a manifest from the agent's context,
+> so `active` only ever rises. If eviction is ever added, the trace schema has room for an
+> `eviction` event and a non-monotonic curve.
+
+### Generating a session trace
+
+Run the orchestrator with **`--trace-out <path>`** (or set **`MCP_ORCHESTRATOR_TRACE_OUT=<path>`** in
+the server's `env` block); it appends one JSONL line per discover/route interaction. Replay that file
+with `--trace`. The format is minimal — turn index plus the events that turn:
+
+```jsonc
+{"turn": 1, "events": [{"type": "discover_tools", "capability": "github", "tool": null}]}
+{"turn": 2, "events": [{"type": "route", "capability": "github", "tool": "create_issue"}]}
+```
+
+A ready-to-run example ships at [`session.sample.jsonl`](session.sample.jsonl) (pairs with
+`orchestrator.config.sample.json`).
+
+### JSON output and CI gating
+
+`--format json` emits a snake_case superset of the table (everything the table shows is derivable
+from it). Two fields are built for CI assertions:
+
+```bash
+# Fail the build if a change makes the orchestrator un-favorable for the canonical session:
+mcp-orchestrator profile --trace canonical.jsonl --config orchestrator.config.json --assert-favorable
+# exit 0 = favorable · exit 2 = not favorable · exit 1 = usage/IO error
+
+# …or assert on the JSON directly:
+mcp-orchestrator profile --trace canonical.jsonl --config orchestrator.config.json --format json \
+  | jq -e '.summary.orchestrator_favorable'
+```
+
+This catches regressions where a change forces an early full-manifest load. Run
+`mcp-orchestrator profile --help` for the full option list.
 
 ---
 

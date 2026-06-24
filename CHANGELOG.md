@@ -9,6 +9,23 @@ uses it as the GitHub Release notes — so keep an entry per released version.
 
 ## [Unreleased]
 
+### Added
+- `profile` subcommand that measures the token economics of progressive tool discovery — the delta
+  between the naive "load every manifest every turn" baseline and the orchestrator's actual
+  progressive cost. Two modes: `profile --config <path>` (static: resting floor, naive baseline, and
+  a best/worst envelope where worst is honestly higher than naive) and
+  `profile --trace <session.jsonl> --config <path>` (replays a real session into the per-turn curve —
+  active vs. naive, load events, never-loaded savings, and break-even, including the honest
+  "overhead never repaid" case). `--format json` emits a snake_case superset for tooling, and
+  `--assert-favorable` exits non-zero so CI can gate on the orchestrator staying favorable for a
+  canonical session.
+- Optional session-trace side-channel: run with `--trace-out <path>` (or
+  `MCP_ORCHESTRATOR_TRACE_OUT`) to append one JSONL line per discover/route interaction for later
+  replay. Off by default; the server hot path is unaffected.
+- Local, deterministic token counting via `Microsoft.ML.Tokenizers` (`cl100k_base`, embedded vocab —
+  offline and CI-friendly), behind an `ITokenCounter` seam so a live-usage backend can replace it.
+  Every report discloses the tokenizer and a ±10% cross-model tolerance.
+
 ## [0.1.1] - 2026-06-22
 
 ### Changed
