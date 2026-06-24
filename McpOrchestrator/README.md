@@ -236,6 +236,21 @@ relayed, so they're listed and skipped). `--host-config` works in trace mode too
 `--trace`. To keep the tool around, install it as shown under [Packaging](#packaging--install-as-a-net-tool);
 to walk away, just don't run it again.
 
+**Testing a local build (before it's on nuget.org).** Pack the current code into the local feed with
+[`pack-local.ps1`](../pack-local.ps1) (it builds the pinned `9.9.9-dev` version into
+`nupkg/local-feed`), then run that exact build via `--source` — still no install:
+
+```powershell
+# from the repo root, after ./pack-local.ps1
+dotnet tool execute McpOrchestrator@9.9.9-dev --source "$PWD\nupkg\local-feed" --yes `
+  profile --host-config "C:\path\to\your\host-config.json"
+```
+
+Use the **exact-version pin** (`@9.9.9-dev`) with `--source` — don't add `--prerelease` (it conflicts
+with an explicit version). `--yes` skips the run-from-source confirmation. `dotnet tool execute`
+caches `9.9.9-dev`, so **re-run `pack-local.ps1` after any code change** (it evicts the cache) or
+you'll keep profiling the previous build.
+
 ### Static mode — `--config`
 
 Connects to each server once to size its manifest, then reports the resting floor, the naive
