@@ -14,9 +14,19 @@ namespace McpOrchestrator;
 /// </summary>
 public static class OrchestratorHost
 {
-    /// <summary>Runs the server over stdio until the host shuts down.</summary>
-    public static async Task RunAsync(string[] args)
+    /// <summary>
+    /// Runs the server over stdio until the host shuts down, or dispatches the <c>profile</c>
+    /// subcommand. Returns a process exit code.
+    /// </summary>
+    public static async Task<int> RunAsync(string[] args)
     {
+        // `mcp-orchestrator profile …` is a one-shot CLI, not the MCP server. Dispatch it before
+        // anything server-related (host build, debug gate) so it never blocks or opens stdio.
+        if (args.Length > 0 && string.Equals(args[0], "profile", StringComparison.OrdinalIgnoreCase))
+        {
+            return await Profiling.ProfileCommand.RunAsync(args[1..]);
+        }
+
         RunDebugGateIfRequested();
 
         var builder = Host.CreateApplicationBuilder(args);
@@ -44,6 +54,21 @@ public static class OrchestratorHost
                 sp.GetRequiredService<ILoggerFactory>().CreateLogger<CapabilityCatalog>()));
         builder.Services.AddSingleton<IDownstreamConnectionManager, DownstreamConnectionManager>();
 
+        // Optional session-trace side-channel (--trace-out <path> or MCP_ORCHESTRATOR_TRACE_OUT).
+        // The connection manager picks this up by DI and records each discover/route so the run can
+        // later be replayed with `profile --trace`. Off → a no-op writer, zero overhead.
+        var traceOutPath = ResolveTraceOutPath(args);
+        if (traceOutPath is not null)
+        {
+            var traceWriter = new Profiling.JsonlSessionTraceWriter(traceOutPath);
+            builder.Services.AddSingleton<Profiling.ISessionTraceWriter>(traceWriter);
+            Console.Error.WriteLine($"[McpOrchestrator] Session trace → {traceWriter.FilePath}");
+        }
+        else
+        {
+            builder.Services.AddSingleton<Profiling.ISessionTraceWriter>(Profiling.NullSessionTraceWriter.Instance);
+        }
+
         builder.Services
             .AddMcpServer()
             .WithStdioServerTransport()
@@ -63,6 +88,30 @@ public static class OrchestratorHost
         }
 
         await app.RunAsync();
+        return 0;
+    }
+
+    /// <summary>
+    /// Resolves the session-trace output path from <c>--trace-out &lt;path&gt;</c> (or
+    /// <c>--trace-out=&lt;path&gt;</c>) on the command line, falling back to the
+    /// <c>MCP_ORCHESTRATOR_TRACE_OUT</c> environment variable. Returns <c>null</c> when tracing is off.
+    /// </summary>
+    internal static string? ResolveTraceOutPath(string[] args)
+    {
+        for (var i = 0; i < args.Length; i++)
+        {
+            if (args[i] == "--trace-out")
+            {
+                return i + 1 < args.Length ? args[i + 1] : null;
+            }
+            if (args[i].StartsWith("--trace-out=", StringComparison.Ordinal))
+            {
+                return args[i]["--trace-out=".Length..];
+            }
+        }
+
+        var fromEnv = Environment.GetEnvironmentVariable("MCP_ORCHESTRATOR_TRACE_OUT");
+        return string.IsNullOrWhiteSpace(fromEnv) ? null : fromEnv;
     }
 
     /// <summary>

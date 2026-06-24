@@ -24,6 +24,7 @@ public sealed class DownstreamConnectionManager : IDownstreamConnectionManager, 
     private readonly ICapabilityCatalog _catalog;
     private readonly ILoggerFactory _loggerFactory;
     private readonly ILogger<DownstreamConnectionManager> _logger;
+    private readonly Profiling.ISessionTraceWriter _trace;
 
     // One lazily-created connection task per capability. Lazy<T> guarantees a single
     // connect even under concurrent first-use; a faulted entry is evicted (see GetClientAsync).
@@ -31,14 +32,21 @@ public sealed class DownstreamConnectionManager : IDownstreamConnectionManager, 
         new(StringComparer.OrdinalIgnoreCase);
 
     /// <summary>Creates the manager. Connections are opened lazily on first use, not here.</summary>
+    /// <param name="trace">
+    /// Optional session-trace writer. When supplied (via <c>--trace-out</c>), each successful
+    /// discover/route is recorded so the run can be replayed by <c>profile --trace</c>. Defaults to
+    /// the no-op writer, so normal operation is unaffected.
+    /// </param>
     public DownstreamConnectionManager(
         ICapabilityCatalog catalog,
         ILoggerFactory loggerFactory,
-        ILogger<DownstreamConnectionManager> logger)
+        ILogger<DownstreamConnectionManager> logger,
+        Profiling.ISessionTraceWriter? trace = null)
     {
         _catalog = catalog;
         _loggerFactory = loggerFactory;
         _logger = logger;
+        _trace = trace ?? Profiling.NullSessionTraceWriter.Instance;
     }
 
     /// <inheritdoc />
@@ -51,6 +59,8 @@ public sealed class DownstreamConnectionManager : IDownstreamConnectionManager, 
         try
         {
             var tools = await client.ListToolsAsync(new RequestOptions(), call.Token);
+            // Manifest is now resident in the agent's context — the load event a trace replay needs.
+            _trace.Record("discover_tools", descriptor.Name, tool: null);
             return tools as IReadOnlyList<McpClientTool> ?? tools.ToList();
         }
         catch (OperationCanceledException) when (TimedOut(call, cancellationToken))
@@ -72,7 +82,10 @@ public sealed class DownstreamConnectionManager : IDownstreamConnectionManager, 
         using var call = NewCallScope(descriptor, cancellationToken);
         try
         {
-            return await client.CallToolAsync(tool, arguments, cancellationToken: call.Token);
+            var result = await client.CallToolAsync(tool, arguments, cancellationToken: call.Token);
+            // The agent routed to this capability — record the interaction for trace replay.
+            _trace.Record("route", descriptor.Name, tool);
+            return result;
         }
         catch (OperationCanceledException) when (TimedOut(call, cancellationToken))
         {
