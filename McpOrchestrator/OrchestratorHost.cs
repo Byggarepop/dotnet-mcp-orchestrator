@@ -27,6 +27,13 @@ public static class OrchestratorHost
             return await Profiling.ProfileCommand.RunAsync(args[1..]);
         }
 
+        // `mcp-orchestrator init <host-config>` adopts an existing MCP host config into an
+        // orchestrator setup (one-shot CLI). Like `profile`, it must never open stdio.
+        if (args.Length > 0 && string.Equals(args[0], "init", StringComparison.OrdinalIgnoreCase))
+        {
+            return await Setup.InitCommand.RunAsync(args[1..]);
+        }
+
         RunDebugGateIfRequested();
 
         var builder = Host.CreateApplicationBuilder(args);
