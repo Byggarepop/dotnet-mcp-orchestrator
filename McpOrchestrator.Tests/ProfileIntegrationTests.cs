@@ -147,6 +147,35 @@ public sealed class ProfileIntegrationTests
         Assert.Contains(spy.Events, e => e is ("discover_tools", "jira", null));
     }
 
+    [Fact]
+    public async Task Profile_from_an_imported_host_config_measures_stdio_and_skips_remote()
+    {
+        // The exact wiring `profile --host-config` uses: parse a host config, import its stdio
+        // servers into a catalog (FromDescriptors), then run the static profiler against it.
+        var demo = Demo.DemoDll.Replace('\\', '/');
+        var import = McpOrchestrator.Setup.HostConfigImport.Parse($$"""
+        {
+          "mcpServers": {
+            "jira":    { "command": "dotnet", "args": ["{{demo}}", "--persona", "jira"] },
+            "codegen": { "command": "dotnet", "args": ["{{demo}}", "--persona", "codegen"] },
+            "remote":  { "type": "http", "url": "https://example.com/mcp" }
+          }
+        }
+        """);
+
+        Assert.Equal(new[] { "jira", "codegen" }, import.Imported);
+        Assert.Equal(new[] { "remote" }, import.SkippedRemote);
+
+        var catalog = CapabilityCatalog.FromDescriptors(import.Capabilities, NullLogger.Instance);
+        var report = await StaticProfiler.RunAsync(catalog, Counter, CancellationToken.None);
+
+        Assert.Equal("static", report.Mode);
+        Assert.Equal(2, report.Config.ServersConnected);
+        Assert.Equal(2, report.NaiveBaseline.ByServer.Count);
+        Assert.True(report.NaiveBaseline.TotalTokensPerTurn > 0);
+        Assert.Null(report.UnreachableServers);
+    }
+
     private sealed class SpyTraceWriter : ISessionTraceWriter
     {
         public List<(string Type, string Capability, string? Tool)> Events { get; } = new();

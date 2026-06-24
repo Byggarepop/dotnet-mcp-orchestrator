@@ -216,6 +216,26 @@ discloses the tokenizer and a **±10% cross-model tolerance** — not exact per-
 counting layer is behind an `ITokenCounter` interface, so a real-API-`usage` backend can be swapped
 in later without touching the profiler.)
 
+### Try it on your existing setup — no install, nothing to clean up
+
+Curious whether the orchestrator would help *your* servers, before committing to it? Point `profile`
+straight at your existing **MCP host config** with `--host-config` and run it as a one-shot tool — no
+global install, and since it **writes nothing**, there's nothing to uninstall afterwards:
+
+```bash
+# Needs the .NET SDK. Reads your .mcp.json / .vscode/mcp.json / Cursor / Claude Desktop config,
+# connects to each stdio server once to size its manifest, and prints what you'd save.
+dotnet tool execute McpOrchestrator profile --host-config ~/.cursor/mcp.json
+
+# `dnx` is the .NET 10 shorthand for the same thing:
+dnx McpOrchestrator profile --host-config .mcp.json
+```
+
+It imports every **stdio** server in the config in memory (remote `http`/`sse` servers can't be
+relayed, so they're listed and skipped). `--host-config` works in trace mode too — pair it with
+`--trace`. To keep the tool around, install it as shown under [Packaging](#packaging--install-as-a-net-tool);
+to walk away, just don't run it again.
+
 ### Static mode — `--config`
 
 Connects to each server once to size its manifest, then reports the resting floor, the naive

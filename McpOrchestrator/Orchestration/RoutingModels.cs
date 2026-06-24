@@ -30,7 +30,7 @@ public static class OrchestratorJson
 internal sealed partial class OrchestratorJsonContext : JsonSerializerContext;
 
 /// <summary>One capability as advertised to the model by <c>list_capabilities</c>.</summary>
-public sealed record CapabilityView(string Name, string Summary, string Instructions);
+public sealed record CapabilityView(string Name, string Summary, string? Instructions);
 
 /// <summary>One downstream tool as reported by <c>discover_tools</c>.</summary>
 public sealed record ToolView(string Name, string? Description, JsonElement InputSchema);
