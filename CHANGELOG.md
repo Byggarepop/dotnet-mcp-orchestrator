@@ -9,7 +9,30 @@ uses it as the GitHub Release notes — so keep an entry per released version.
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-06-24
+
 ### Added
+- `profile` subcommand that measures the token economics of progressive tool discovery — the delta
+  between the naive "load every manifest every turn" baseline and the orchestrator's actual
+  progressive cost. Two modes: `profile --config <path>` (static: resting floor, naive baseline, and
+  a best/worst envelope where worst is honestly higher than naive) and
+  `profile --trace <session.jsonl> --config <path>` (replays a real session into the per-turn curve —
+  active vs. naive, load events, never-loaded savings, and break-even, including the honest
+  "overhead never repaid" case). `--format json` emits a snake_case superset for tooling, and
+  `--assert-favorable` exits non-zero so CI can gate on the orchestrator staying favorable for a
+  canonical session.
+- `profile --host-config <path>`: a read-only "try before you keep it" path. Points the profiler at
+  an existing MCP host config (`.mcp.json` / `.vscode/mcp.json` / Cursor / Claude Desktop) instead of
+  an orchestrator config — its stdio servers are imported in memory and measured, **writing
+  nothing** (remote http/sse servers are listed and skipped). Run it as a one-shot with
+  `dotnet tool execute McpOrchestrator profile --host-config <path>` (or `dnx …`) to see the savings
+  with no global install and nothing to uninstall. The host-config parser is shared with `init`.
+- Optional session-trace side-channel: run with `--trace-out <path>` (or
+  `MCP_ORCHESTRATOR_TRACE_OUT`) to append one JSONL line per discover/route interaction for later
+  replay. Off by default; the server hot path is unaffected.
+- Local, deterministic token counting via `Microsoft.ML.Tokenizers` (`cl100k_base`, embedded vocab —
+  offline and CI-friendly), behind an `ITokenCounter` seam so a live-usage backend can replace it.
+  Every report discloses the tokenizer and a ±10% cross-model tolerance.
 - `init` subcommand that adopts an existing MCP host config in one step: `mcp-orchestrator init
   <host-config>` lifts every stdio server out of `.mcp.json` / `.vscode/mcp.json` (or any
   `mcpServers` / `servers` map — Cursor, Claude Desktop) into a generated `orchestrator.config.json`
@@ -22,31 +45,10 @@ uses it as the GitHub Release notes — so keep an entry per released version.
 - `pack-local.ps1`: packs the project as the pinned `9.9.9-dev` version into `nupkg/local-feed` and
   evicts the cached copy, so a host launching the tool with `dotnet tool execute McpOrchestrator
   --version 9.9.9-dev --source <feed> --yes` always runs the latest local code.
-- `profile --host-config <path>`: a read-only "try before you keep it" path. Points the profiler at
-  an existing MCP host config (`.mcp.json` / `.vscode/mcp.json` / Cursor / Claude Desktop) instead of
-  an orchestrator config — its stdio servers are imported in memory and measured, **writing
-  nothing** (remote http/sse servers are listed and skipped). Run it as a one-shot with
-  `dotnet tool execute McpOrchestrator profile --host-config <path>` (or `dnx …`) to see the savings
-  with no global install and nothing to uninstall. The host-config parser is shared with `init`.
 
 ### Changed
 - `instructions` is now an optional (nullable) capability field, omitted from output and from
   `list_capabilities` when absent, rather than always emitted as an empty string.
-- `profile` subcommand that measures the token economics of progressive tool discovery — the delta
-  between the naive "load every manifest every turn" baseline and the orchestrator's actual
-  progressive cost. Two modes: `profile --config <path>` (static: resting floor, naive baseline, and
-  a best/worst envelope where worst is honestly higher than naive) and
-  `profile --trace <session.jsonl> --config <path>` (replays a real session into the per-turn curve —
-  active vs. naive, load events, never-loaded savings, and break-even, including the honest
-  "overhead never repaid" case). `--format json` emits a snake_case superset for tooling, and
-  `--assert-favorable` exits non-zero so CI can gate on the orchestrator staying favorable for a
-  canonical session.
-- Optional session-trace side-channel: run with `--trace-out <path>` (or
-  `MCP_ORCHESTRATOR_TRACE_OUT`) to append one JSONL line per discover/route interaction for later
-  replay. Off by default; the server hot path is unaffected.
-- Local, deterministic token counting via `Microsoft.ML.Tokenizers` (`cl100k_base`, embedded vocab —
-  offline and CI-friendly), behind an `ITokenCounter` seam so a live-usage backend can replace it.
-  Every report discloses the tokenizer and a ±10% cross-model tolerance.
 
 ## [0.1.1] - 2026-06-22
 
