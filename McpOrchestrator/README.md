@@ -200,23 +200,10 @@ that re-writes the prefix regardless of approach.)
 
 ## Profiling token economics (`profile`)
 
-The [Token scaling](#token-scaling) section makes a claim; the **`profile`** subcommand measures it.
-It reports the one number nothing else does: the **delta** between the naive "load every server's
-manifest, every turn" baseline and the orchestrator's actual *progressive* cost — and whether the
-routing actually paid off over a real session.
+**The fastest way to know if this tool is worth it: point it at your existing setup and read the
+number.** No install, nothing written — then the rest of this section explains what it measured.
 
-```bash
-mcp-orchestrator profile --config orchestrator.config.json                 # static
-mcp-orchestrator profile --trace session.jsonl --config orchestrator.config.json   # realized
-```
-
-Token counts use a **local `cl100k_base` tokenizer** (the Claude/GPT-4-class BPE), embedded so it's
-offline, deterministic, and CI-friendly. It's an approximation across model families, so every run
-discloses the tokenizer and a **±10% cross-model tolerance** — not exact per-model accounting. (The
-counting layer is behind an `ITokenCounter` interface, so a real-API-`usage` backend can be swapped
-in later without touching the profiler.)
-
-### Try it on your existing setup — no install, nothing to clean up
+### Check if it's for you — one command, no install
 
 Curious whether the orchestrator would help *your* servers, before committing to it? Point `profile`
 straight at your existing **MCP host config** with `--host-config` and run it as a one-shot tool — no
@@ -250,6 +237,25 @@ Use the **exact-version pin** (`@9.9.9-dev`) with `--source` — don't add `--pr
 with an explicit version). `--yes` skips the run-from-source confirmation. `dotnet tool execute`
 caches `9.9.9-dev`, so **re-run `pack-local.ps1` after any code change** (it evicts the cache) or
 you'll keep profiling the previous build.
+
+### What `profile` measures
+
+The [Token scaling](#token-scaling) section makes a claim; the **`profile`** subcommand measures it.
+It reports the one number nothing else does: the **delta** between the naive "load every server's
+manifest, every turn" baseline and the orchestrator's actual *progressive* cost — and whether the
+routing actually paid off over a real session. Once you've adopted the orchestrator, profile its own
+config directly:
+
+```bash
+mcp-orchestrator profile --config orchestrator.config.json                 # static
+mcp-orchestrator profile --trace session.jsonl --config orchestrator.config.json   # realized
+```
+
+Token counts use a **local `cl100k_base` tokenizer** (the Claude/GPT-4-class BPE), embedded so it's
+offline, deterministic, and CI-friendly. It's an approximation across model families, so every run
+discloses the tokenizer and a **±10% cross-model tolerance** — not exact per-model accounting. (The
+counting layer is behind an `ITokenCounter` interface, so a real-API-`usage` backend can be swapped
+in later without touching the profiler.)
 
 ### Static mode — `--config`
 
