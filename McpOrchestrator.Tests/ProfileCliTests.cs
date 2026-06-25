@@ -9,6 +9,7 @@ namespace McpOrchestrator.Tests;
 /// <see cref="ProfileCommand.RunAsync"/>, capturing stdout/stderr. These paths all fail fast
 /// (usage/validation), so none launch a downstream server.
 /// </summary>
+[Collection("ConsoleSerial")]
 public sealed class ProfileCliTests
 {
     private static async Task<(int Code, string Out, string Err)> Run(params string[] args)
