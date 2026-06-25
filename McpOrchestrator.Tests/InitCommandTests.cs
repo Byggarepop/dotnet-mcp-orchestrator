@@ -12,6 +12,7 @@ namespace McpOrchestrator.Tests;
 /// in → rewritten host + generated catalog) and the CLI arg/exit-code surface through
 /// <see cref="InitCommand.RunAsync"/>.
 /// </summary>
+[Collection("ConsoleSerial")]
 public sealed class InitCommandTests
 {
     private const string ClaudeStyle = """
