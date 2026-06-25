@@ -9,6 +9,15 @@ uses it as the GitHub Release notes — so keep an entry per released version.
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-06-25
+
+### Fixed
+- Corrected the Official MCP Registry ownership marker to the case-sensitive namespace casing
+  `io.github.Byggarepop/dotnet-mcp-orchestrator` (was `byggarepop`). The registry matches the
+  `mcp-name:` marker in the packed README against the server name exactly, and GitHub OIDC grants
+  the namespace under the login's real casing (`Byggarepop`), so the lowercase 0.2.0 marker could
+  not be verified. No functional changes.
+
 ## [0.2.0] - 2026-06-24
 
 ### Added
