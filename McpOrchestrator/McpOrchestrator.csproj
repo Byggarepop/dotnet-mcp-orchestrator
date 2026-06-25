@@ -16,12 +16,17 @@
          `mcp-orchestrator` command). Framework-dependent and lightweight. -->
     <PackAsTool>true</PackAsTool>
     <ToolCommandName>mcp-orchestrator</ToolCommandName>
+    <!-- PackAsTool stamps the DotnetTool package type (so `dotnet tool install` works); this adds
+         McpServer alongside it (both end up in the .nuspec <packageTypes>) so the package also
+         surfaces under nuget.org's "MCP Server" package-type filter. The two types coexist — the
+         tool install path is unaffected. -->
+    <PackageType>McpServer</PackageType>
     <PackageId>McpOrchestrator</PackageId>
     <!-- pack-all.ps1 sets PackRid to produce per-platform self-contained tool packages whose id
          carries the RID (e.g. McpOrchestrator.win-x64), so all platforms can coexist on a feed.
          Derived per-project so a referenced project keeps its own id. -->
     <PackageId Condition="'$(PackRid)' != ''">$(PackageId).$(PackRid)</PackageId>
-    <Version>0.2.1</Version>
+    <Version>0.2.2</Version>
     <Description>A .NET-native MCP orchestrator: route one agent through one server to many MCP servers, with progressive tool discovery to keep context small.</Description>
     <PackageTags>mcp;model-context-protocol;orchestrator;gateway;ai;agents</PackageTags>
     <Authors>Byggarepop</Authors>
