@@ -125,3 +125,56 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: gh release create "$GITHUB_REF_NAME" --title "$GITHUB_REF_NAME" --notes-file notes.md release/*.zip release/SHA256SUMS nupkg/*.nupkg
+
+  # Publish the server listing to the Official MCP Registry (registry.modelcontextprotocol.io),
+  # which downstream registries (e.g. the GitHub MCP Registry) consume. The registry verifies that
+  # the NuGet package's packed README carries the `mcp-name: io.github.Byggarepop/...` marker, so
+  # this MUST run AFTER the package is live on nuget.org — hence `needs: release` plus the README
+  # availability poll below. Auth is GitHub OIDC (no stored secret): the workflow's OIDC token
+  # proves it runs in Byggarepop/* and unlocks the io.github.Byggarepop/* namespace.
+  #
+  # OFF by default. To enable: set the repo variable PUBLISH_MCP_REGISTRY = true. It also needs the
+  # package on nuget.org — either pushed in this same run (PUBLISH_NUGET = true) or already public.
+  mcp-registry:
+    name: mcp-registry
+    needs: release
+    if: vars.PUBLISH_MCP_REGISTRY == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write   # request the OIDC token for github-oidc registry auth
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Version from tag
+        run: echo "VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"
+
+      # Stamp the tag's version into the committed server.json so the listing version can never
+      # drift from the release tag (the registry rejects a version that isn't on nuget.org).
+      - name: Sync server.json version to tag
+        run: |
+          jq --arg v "$VERSION" '.version = $v | .packages[0].version = $v' .mcp/server.json > server.tmp
+          mv server.tmp .mcp/server.json
+          cat .mcp/server.json
+
+      # The registry pulls the package README to verify the mcp-name marker; wait until nuget.org
+      # has finished validating and the README endpoint is live before publishing.
+      - name: Wait for NuGet README to be available
+        run: |
+          id="mcporchestrator"; version="$(echo "$VERSION" | tr '[:upper:]' '[:lower:]')"
+          url="https://api.nuget.org/v3-flatcontainer/$id/$version/readme"
+          for i in $(seq 1 30); do
+            if curl -sfL "$url" >/dev/null; then echo "README available after ~$((i*10))s"; exit 0; fi
+            echo "Not yet available ($((i*10))s elapsed)…"; sleep 10
+          done
+          echo "::error::Package README for $id $version not available after 300s ($url)"; exit 1
+
+      - name: Install mcp-publisher
+        run: |
+          curl -L "https://github.com/modelcontextprotocol/registry/releases/latest/download/mcp-publisher_$(uname -s | tr '[:upper:]' '[:lower:]')_$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/').tar.gz" | tar xz mcp-publisher
+
+      - name: Authenticate to MCP Registry (GitHub OIDC)
+        run: ./mcp-publisher login github-oidc
+
+      - name: Publish server.json to the MCP Registry
+        run: ./mcp-publisher publish .mcp/server.json

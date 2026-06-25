@@ -15,3 +15,8 @@ dist/
 # Local Native-AOT publish output
 aot/
 _aot/
+
+# Locally-downloaded MCP registry publisher CLI (not part of the repo)
+mcp-publisher
+mcp-publisher.exe
+*.tar.gz

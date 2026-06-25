@@ -1,3 +1,5 @@
+<!-- mcp-name: io.github.Byggarepop/dotnet-mcp-orchestrator -->
+
 # McpOrchestrator — a .NET-native MCP orchestrator
 
 [![NuGet](https://img.shields.io/nuget/v/McpOrchestrator.svg)](https://www.nuget.org/packages/McpOrchestrator)
