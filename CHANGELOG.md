@@ -9,14 +9,19 @@ uses it as the GitHub Release notes — so keep an entry per released version.
 
 ## [Unreleased]
 
+## [0.2.2] - 2026-06-25
+
+### Added
+- `McpServer` NuGet package type (alongside the existing `DotnetTool` type), so the package is
+  discoverable under nuget.org's "MCP Server" package-type filter. The tool install path is
+  unaffected — both package types ship in the same `.nupkg`.
+
 ## [0.2.1] - 2026-06-25
 
-### Fixed
-- Corrected the Official MCP Registry ownership marker to the case-sensitive namespace casing
-  `io.github.Byggarepop/dotnet-mcp-orchestrator` (was `byggarepop`). The registry matches the
-  `mcp-name:` marker in the packed README against the server name exactly, and GitHub OIDC grants
-  the namespace under the login's real casing (`Byggarepop`), so the lowercase 0.2.0 marker could
-  not be verified. No functional changes.
+### Added
+- Published to the Official MCP Registry (`registry.modelcontextprotocol.io`) as
+  `io.github.Byggarepop/dotnet-mcp-orchestrator`, with an automated `mcp-registry` CI job that
+  publishes the listing on each version tag via GitHub OIDC. No functional changes to the tool.
 
 ## [0.2.0] - 2026-06-24
 
