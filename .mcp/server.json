@@ -3,7 +3,7 @@
   "name": "io.github.Byggarepop/dotnet-mcp-orchestrator",
   "description": "Route one agent through one MCP server to many, with progressive tool discovery to shrink context.",
   "title": "McpOrchestrator",
-  "version": "0.2.2",
+  "version": "0.2.3",
   "websiteUrl": "https://github.com/Byggarepop/dotnet-mcp-orchestrator",
   "repository": {
     "url": "https://github.com/Byggarepop/dotnet-mcp-orchestrator",
@@ -12,8 +12,9 @@
   "packages": [
     {
       "registryType": "nuget",
+      "registryBaseUrl": "https://api.nuget.org/v3/index.json",
       "identifier": "McpOrchestrator",
-      "version": "0.2.2",
+      "version": "0.2.3",
       "transport": {
         "type": "stdio"
       }
