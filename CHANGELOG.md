@@ -9,6 +9,14 @@ uses it as the GitHub Release notes — so keep an entry per released version.
 
 ## [Unreleased]
 
+## [0.2.3] - 2026-06-25
+
+### Added
+- Pack the registry manifest at `.mcp/server.json` inside the NuGet package. nuget.org reads this
+  embedded file to render the "MCP Server" tab and the one-click VS Code configuration; without it
+  nuget.org reported "this package does not include a server.json file". Also added
+  `registryBaseUrl` to the package entry for parity with the canonical MCP-server package shape.
+
 ## [0.2.2] - 2026-06-25
 
 ### Added
