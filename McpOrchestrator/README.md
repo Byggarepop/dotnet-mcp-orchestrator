@@ -205,22 +205,34 @@ number.** No install, nothing written — then the rest of this section explains
 
 ### Check if it's for you — one command, no install
 
-Curious whether the orchestrator would help *your* servers, before committing to it? Point `profile`
-straight at your existing **MCP host config** with `--host-config` and run it as a one-shot tool — no
-global install, and since it **writes nothing**, there's nothing to uninstall afterwards:
+Curious whether the orchestrator would help *your* servers, before committing to it? `cd` into a
+folder that already contains a config and run `profile` with no arguments as a one-shot tool — no
+global install, and since it **writes nothing**, there's nothing to uninstall afterwards. It
+auto-detects the first config present, in this order: `orchestrator.config.json`, `.mcp.json`,
+`.vscode/mcp.json`, `.cursor/mcp.json`, `mcp.json`, prints which file it picked, then profiles it (the
+host-config variants are imported just like `--host-config`; an `orchestrator.config.json` is profiled
+directly):
 
 ```bash
-# Needs the .NET SDK. Reads your .mcp.json / .vscode/mcp.json / Cursor / Claude Desktop config,
-# connects to each stdio server once to size its manifest, and prints what you'd save.
+# Needs the .NET SDK. dnx is the .NET 10 shorthand for `dotnet tool execute`.
+cd ~/my-project          # a folder with a .mcp.json (or any of the names above)
+dnx McpOrchestrator profile
+```
+
+There's also the option to point `profile` straight at an **MCP host config** with `--host-config` —
+handy when the config lives elsewhere or you want to be sure which one is read:
+
+```bash
 dotnet tool execute McpOrchestrator profile --host-config ~/.cursor/mcp.json
 
-# `dnx` is the .NET 10 shorthand for the same thing:
+# `dnx` works here too:
 dnx McpOrchestrator profile --host-config .mcp.json
 ```
 
 It imports every **stdio** server in the config in memory (remote `http`/`sse` servers can't be
-relayed, so they're listed and skipped). `--host-config` works in trace mode too — pair it with
-`--trace`. To keep the tool around, install it as shown under [Packaging](#packaging--install-as-a-net-tool);
+relayed, so they're listed and skipped). Both auto-detect and `--host-config` work in trace mode too
+— pair them with `--trace` and the config is supplied for you, so `profile --trace session.jsonl`
+just works in a folder that has a config. To keep the tool around, install it as shown under [Packaging](#packaging--install-as-a-net-tool);
 to walk away, just don't run it again.
 
 **Testing a local build (before it's on nuget.org).** Pack the current code into the local feed with
@@ -249,6 +261,7 @@ config directly:
 ```bash
 mcp-orchestrator profile --config orchestrator.config.json                 # static
 mcp-orchestrator profile --trace session.jsonl --config orchestrator.config.json   # realized
+mcp-orchestrator profile                                                   # from the config's folder, no --config needed
 ```
 
 Token counts use a **local `cl100k_base` tokenizer** (the Claude/GPT-4-class BPE), embedded so it's

@@ -42,6 +42,21 @@ public static class ProfileCommand
             return 0;
         }
 
+        // No --config / --host-config given? Look in the current directory for a config to profile —
+        // the orchestrator's own file, or whatever MCP host config the tool you use drops there
+        // (.mcp.json, .vscode/mcp.json, .cursor/mcp.json). First match by the precedence below wins.
+        if (parsed.ConfigPath is null && parsed.HostConfigPath is null)
+        {
+            var discovered = DiscoverDefaultSource(Directory.GetCurrentDirectory());
+            if (discovered is { } found)
+            {
+                parsed = parsed.WithSource(found.Path, found.IsHostConfig);
+                Console.Error.WriteLine(
+                    $"profile: no --config/--host-config given; using discovered " +
+                    $"{(found.IsHostConfig ? "host config" : "orchestrator config")} {found.Path}.");
+            }
+        }
+
         try
         {
             parsed.Validate();
@@ -116,6 +131,43 @@ public static class ProfileCommand
     }
 
     /// <summary>
+    /// Config locations probed, in precedence order, when neither <c>--config</c> nor
+    /// <c>--host-config</c> is supplied. The orchestrator's own config comes first; the rest are the
+    /// host-config files different MCP clients drop in a project root. Relative to the search dir.
+    /// </summary>
+    private static readonly (string RelativePath, bool IsHostConfig)[] DefaultSourceCandidates =
+    {
+        ("orchestrator.config.json", false),
+        (".mcp.json", true),
+        (Path.Combine(".vscode", "mcp.json"), true),
+        (Path.Combine(".cursor", "mcp.json"), true),
+        ("mcp.json", true),
+    };
+
+    /// <summary>Human-readable list of the probed locations, for help text and errors.</summary>
+    internal static string DefaultSourceList =>
+        string.Join(", ", DefaultSourceCandidates.Select(c => c.RelativePath.Replace('\\', '/')));
+
+    /// <summary>
+    /// Probes <paramref name="directory"/> for the first existing config in
+    /// <see cref="DefaultSourceCandidates"/>. Returns its full path and whether it's a host config
+    /// (so the caller knows whether to import it), or <c>null</c> if none exist.
+    /// </summary>
+    internal static (string Path, bool IsHostConfig)? DiscoverDefaultSource(string directory)
+    {
+        foreach (var (relativePath, isHostConfig) in DefaultSourceCandidates)
+        {
+            var candidate = Path.Combine(directory, relativePath);
+            if (File.Exists(candidate))
+            {
+                return (Path.GetFullPath(candidate), isHostConfig);
+            }
+        }
+
+        return null;
+    }
+
+    /// <summary>
     /// Reads an MCP host config and imports its stdio servers into an in-memory catalog. Writes
     /// nothing — this is the read-only "would the orchestrator help me?" path. Remote (http/sse)
     /// servers can't be relayed, so they're reported and left out of the measurement.
@@ -165,6 +217,20 @@ public static class ProfileCommand
         public bool Json { get; private init; }
         public bool AssertFavorable { get; private init; }
         public bool ShowHelp { get; private init; }
+
+        /// <summary>
+        /// Returns a copy with the source set to a discovered path: a host config (imported in
+        /// memory) or an orchestrator config. Used when neither flag was passed on the command line.
+        /// </summary>
+        public ParsedArgs WithSource(string path, bool isHostConfig) => new()
+        {
+            ConfigPath = isHostConfig ? null : path,
+            HostConfigPath = isHostConfig ? path : null,
+            TracePath = TracePath,
+            Json = Json,
+            AssertFavorable = AssertFavorable,
+            ShowHelp = ShowHelp,
+        };
 
         public static ParsedArgs Parse(string[] args)
         {
@@ -238,8 +304,10 @@ public static class ProfileCommand
             {
                 throw new ArgumentException(
                     TracePath is null
-                        ? "a config is required: --config <path> (orchestrator config) or --host-config <path> (import an MCP host config)."
-                        : "--trace needs a config too: add --config <path> or --host-config <path> (manifest sizes are measured from it).");
+                        ? "a config is required: --config <path> (orchestrator config) or --host-config <path> (import an MCP host config). "
+                          + $"With neither, profile looks in the current directory for: {DefaultSourceList} — none were found."
+                        : "--trace needs a config too: add --config <path> or --host-config <path> (manifest sizes are measured from it). "
+                          + $"With neither, profile looks in the current directory for: {DefaultSourceList} — none were found.");
             }
 
             if (AssertFavorable && TracePath is null)
@@ -268,9 +336,17 @@ public static class ProfileCommand
         mcp-orchestrator profile — measure the token economics of progressive tool discovery
 
         USAGE
+          mcp-orchestrator profile [options]                                          (static, auto-detect)
           mcp-orchestrator profile --config <path> [options]                          (static)
           mcp-orchestrator profile --host-config <path> [options]                     (static, import)
-          mcp-orchestrator profile --trace <session.jsonl> --config <path> [options]  (trace)
+          mcp-orchestrator profile --trace <session.jsonl> [--config <path>] [options] (trace)
+
+        AUTO-DETECT
+          With no --config/--host-config, profile looks in the current directory and uses the first
+          config it finds, in this order:
+            orchestrator.config.json, .mcp.json, .vscode/mcp.json, .cursor/mcp.json, mcp.json
+          orchestrator.config.json is profiled directly; the others are imported like --host-config.
+          This also supplies the config for --trace, so 'profile --trace session.jsonl' just works.
 
         MODES
           static   Resting floor, naive baseline, and the best/worst envelope for a config.
@@ -284,7 +360,8 @@ public static class ProfileCommand
                                  config (.mcp.json / .vscode/mcp.json / Cursor / Claude Desktop). Its
                                  stdio servers are imported in memory and measured; NOTHING is written.
                                  Remote (http/sse) servers can't be relayed, so they're skipped.
-                                 Mutually exclusive with --config; one of the two is required.
+                                 Mutually exclusive with --config. If you pass neither, profile
+                                 auto-detects one from the current directory (see AUTO-DETECT).
           --trace <path>         Session trace (JSONL) to replay. Selects trace mode.
           --format <table|json>  Output format. Default: table. JSON is a superset of the table.
           --tokenizer <name>     Token encoding. Default and only: cl100k_base.

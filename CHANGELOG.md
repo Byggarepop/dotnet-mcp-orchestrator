@@ -9,6 +9,13 @@ uses it as the GitHub Release notes — so keep an entry per released version.
 
 ## [Unreleased]
 
+### Added
+- `profile` now auto-detects a config when neither `--config` nor `--host-config` is given: it
+  looks in the current directory and uses the first of `orchestrator.config.json`, `.mcp.json`,
+  `.vscode/mcp.json`, `.cursor/mcp.json`, `mcp.json` that exists (`orchestrator.config.json` is
+  profiled directly; the others are imported like `--host-config`). This also supplies the config
+  for `--trace`, so `profile --trace session.jsonl` works without naming a config file.
+
 ## [0.2.3] - 2026-06-25
 
 ### Added
