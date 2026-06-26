@@ -36,7 +36,14 @@ The value here is the **smallest possible surface**: a pure stdio relay that ins
 
 ## Is this tool for you? Check in one command — no install
 
-Before changing anything, see what the orchestrator would actually save for *your* servers. Point it at your existing MCP host config and it connects to each stdio server once, then prints the token savings — **nothing is installed and not a single file is changed** (needs the .NET SDK):
+Before changing anything, see what the orchestrator would actually save for *your* servers. `cd` into a folder that already holds an MCP config and run `profile` with **no path at all** — it auto-detects the config, connects to each stdio server once, then prints the token savings — **nothing is installed and not a single file is changed** (needs the .NET SDK):
+
+```bash
+cd ~/my-project          # a folder with a .mcp.json / .vscode/mcp.json / Cursor config
+dotnet tool execute McpOrchestrator profile
+```
+
+It picks the first config it finds (`orchestrator.config.json`, `.mcp.json`, `.vscode/mcp.json`, `.cursor/mcp.json`, `mcp.json`). There's also the option to point at a config explicitly instead — handy when it lives elsewhere or you want to be sure which one is read:
 
 ```bash
 dotnet tool execute McpOrchestrator profile --host-config <your .mcp.json / Cursor / Claude Desktop config>
