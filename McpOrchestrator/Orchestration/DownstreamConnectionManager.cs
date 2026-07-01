@@ -93,6 +93,20 @@ public sealed class DownstreamConnectionManager : IDownstreamConnectionManager, 
         }
     }
 
+    /// <summary>
+    /// Returns what the downstream server declared about itself during the MCP handshake
+    /// (connecting to it if needed): its <c>serverInfo.name</c> and optional <c>instructions</c>.
+    /// Not on <see cref="IDownstreamConnectionManager"/> — routing never needs it; only setup-time
+    /// callers (like <c>init</c>'s summary generation) do, and they hold the concrete manager.
+    /// </summary>
+    /// <exception cref="CapabilityNotFoundException">No enabled capability has that name.</exception>
+    public async Task<ServerHandshake> GetServerHandshakeAsync(string capability, CancellationToken cancellationToken)
+    {
+        var descriptor = Resolve(capability);
+        var client = await GetClientAsync(descriptor, cancellationToken);
+        return new ServerHandshake(client.ServerInfo?.Name, client.ServerInstructions);
+    }
+
     /// <summary>Resolves a capability name to its descriptor, or throws if it is not in the catalog.</summary>
     private CapabilityDescriptor Resolve(string capability) =>
         _catalog.Find(capability) ?? throw new CapabilityNotFoundException(capability, _catalog.Names);
@@ -214,3 +228,9 @@ public sealed class DownstreamConnectionManager : IDownstreamConnectionManager, 
         _clients.Clear();
     }
 }
+
+/// <summary>
+/// What a downstream server declared about itself in the MCP <c>initialize</c> response:
+/// its self-reported <c>serverInfo.name</c> and the optional <c>instructions</c> hint.
+/// </summary>
+public sealed record ServerHandshake(string? ServerName, string? Instructions);

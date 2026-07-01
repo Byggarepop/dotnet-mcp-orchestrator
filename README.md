@@ -80,11 +80,11 @@ Or point it at a specific config — `.mcp.json` (Claude Code, Visual Studio), `
 mcp-orchestrator init path/to/.mcp.json
 ```
 
-It lifts every stdio server into a generated `orchestrator.config.json` (one capability each), backs up the original to `.bak`, then rewrites it to launch **only** the orchestrator — pointed at the new catalog via `MCP_ORCHESTRATOR_CONFIG`. Remote (http/sse) servers can't be relayed over stdio, so they're left in place untouched. (Add `--dry-run` to preview both files first.)
+It lifts every stdio server into a generated `orchestrator.config.json` (one capability each), backs up the original to `.bak`, then rewrites it to launch **only** the orchestrator — pointed at the new catalog via `MCP_ORCHESTRATOR_CONFIG`. Along the way it connects to each server once and auto-generates its one-line `summary` from what the server declares about itself (its `initialize` instructions, else its tool names) — no LLM, fully offline. Remote (http/sse) servers can't be relayed over stdio, so they're left in place untouched. (Add `--dry-run` to preview both files first; add `--no-summarize` to skip the server connections and keep `TODO` placeholders instead.)
 
-### 3. Add summary text
+### 3. Review the summaries (optional)
 
-Open the generated `orchestrator.config.json` and replace each capability's `TODO` `summary` with a one-line description of when the agent should use it — that line is what the agent reads to route. Then restart your MCP host.
+Open the generated `orchestrator.config.json` and review the auto-generated summaries — each is marked with a trailing `// auto-generated` comment — and refine any that look off; that line is what the agent reads to route. A server that failed to start keeps a `TODO` placeholder to fill in by hand. Then restart your MCP host.
 
 That's it. The agent now sees three meta-tools and the flow is `list_capabilities` → `discover_tools("…")` → `route("…", "<tool>", { … })`.
 

@@ -18,8 +18,8 @@ namespace McpOrchestrator.Setup;
 /// </summary>
 /// <remarks>
 /// Exit codes: <c>0</c> success · <c>1</c> usage / IO / parse error.
-/// After running, the user only needs to fill in a one-line <c>summary</c> (and optionally
-/// <c>instructions</c>) for each capability in the generated file.
+/// Unless <c>--no-summarize</c> is given, init connects to each server once and auto-generates its
+/// one-line <c>summary</c> (see <see cref="SummaryGenerator"/>); the user only reviews the result.
 /// </remarks>
 public static class InitCommand
 {
@@ -71,7 +71,7 @@ public static class InitCommand
 
         try
         {
-            return await Task.FromResult(Execute(parsed));
+            return await ExecuteAsync(parsed);
         }
         catch (Exception ex) when (ex is FileNotFoundException or InvalidDataException or IOException or UnauthorizedAccessException)
         {
@@ -116,7 +116,7 @@ public static class InitCommand
         return null;
     }
 
-    private static int Execute(ParsedArgs parsed)
+    private static async Task<int> ExecuteAsync(ParsedArgs parsed)
     {
         var hostPath = Path.GetFullPath(parsed.HostConfigPath!);
         if (!File.Exists(hostPath))
@@ -135,6 +135,30 @@ public static class InitCommand
 
         var hostText = File.ReadAllText(hostPath);
 
+        // Unless opted out, connect to each importable server once and derive its summary from
+        // what the server itself declares (instructions, then tool names). A server that won't
+        // start just keeps its TODO placeholder — probing never fails the init.
+        IReadOnlyDictionary<string, string>? summaries = null;
+        if (!parsed.NoSummarize)
+        {
+            IReadOnlyList<CapabilityDescriptor> toProbe;
+            try
+            {
+                toProbe = HostConfigImport.Parse(hostText).Capabilities;
+            }
+            catch (JsonException ex)
+            {
+                throw new InvalidDataException($"could not parse '{hostPath}' as JSON: {ex.Message}", ex);
+            }
+
+            if (toProbe.Count > 0)
+            {
+                Console.Error.WriteLine(
+                    $"Connecting to {toProbe.Count} server(s) once to generate summaries (--no-summarize skips this)…");
+                summaries = await SummaryGenerator.GenerateAsync(toProbe, CancellationToken.None);
+            }
+        }
+
         // How the host should launch the orchestrator. Default: the `mcp-orchestrator` command on
         // PATH. With --dev-feed, run the tool straight from a local folder feed (same pattern as
         // pack-local.ps1) so the host always picks up the latest local build.
@@ -145,7 +169,7 @@ public static class InitCommand
         InitPlan plan;
         try
         {
-            plan = Plan(hostText, Path.GetFileName(hostPath), outPath, orchestratorCommand, orchestratorArgs);
+            plan = Plan(hostText, Path.GetFileName(hostPath), outPath, orchestratorCommand, orchestratorArgs, summaries);
         }
         catch (JsonException ex)
         {
@@ -188,10 +212,23 @@ public static class InitCommand
     /// </summary>
     internal static InitPlan Plan(
         string hostConfigText, string sourceLabel, string outConfigPath,
-        string orchestratorCommand, IReadOnlyList<string>? orchestratorArgs = null)
+        string orchestratorCommand, IReadOnlyList<string>? orchestratorArgs = null,
+        IReadOnlyDictionary<string, string>? summaries = null)
     {
         // Classify every server (shared with `profile --host-config`); init then mutates the same DOM.
         var import = HostConfigImport.Parse(hostConfigText);
+
+        // Apply the auto-generated summaries (if the caller probed for any) over the TODO
+        // placeholders, remembering which capabilities got one so they can be marked in the output.
+        var autoSummarized = new List<string>();
+        foreach (var capability in import.Capabilities)
+        {
+            if (summaries is not null && summaries.TryGetValue(capability.Name, out var summary))
+            {
+                capability.Summary = summary;
+                autoSummarized.Add(capability.Name);
+            }
+        }
 
         // Drop the imported servers (replaced by the single orchestrator entry) and any pre-existing
         // orchestrator entry — re-adding a fresh one below keeps re-running init idempotent. Remote
@@ -224,9 +261,9 @@ public static class InitCommand
 
         var newHostText = import.Root.ToJsonString(new JsonSerializerOptions { WriteIndented = true });
 
-        var configText = BuildConfigText(import.Capabilities.ToList(), sourceLabel);
+        var configText = BuildConfigText(import.Capabilities.ToList(), sourceLabel, autoSummarized);
 
-        return new InitPlan(newHostText, configText, import.Imported, import.SkippedRemote, import.ContainerKey);
+        return new InitPlan(newHostText, configText, import.Imported, import.SkippedRemote, import.ContainerKey, autoSummarized);
     }
 
     // The generated catalog is a human-edited file, so use the relaxed encoder: don't escape '<',
@@ -235,20 +272,61 @@ public static class InitCommand
     private static readonly JsonSerializerOptions WriteOptions =
         new(OrchestratorConfigWriteJsonContext.Default.Options) { Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping };
 
-    /// <summary>Serializes the generated catalog with a short header comment guiding the user to fill in summaries.</summary>
-    private static string BuildConfigText(List<CapabilityDescriptor> capabilities, string sourceLabel)
+    /// <summary>Marker appended to summary lines the tool generated itself (the config reader skips // comments).</summary>
+    internal const string AutoSummaryComment = "// auto-generated — refine for better routing";
+
+    /// <summary>Serializes the generated catalog with a short header comment guiding the user through the summaries.</summary>
+    private static string BuildConfigText(List<CapabilityDescriptor> capabilities, string sourceLabel, IReadOnlyList<string> autoSummarized)
     {
         var config = new OrchestratorConfig { Capabilities = capabilities };
         var typeInfo = (JsonTypeInfo<OrchestratorConfig>)WriteOptions.GetTypeInfo(typeof(OrchestratorConfig));
         var json = JsonSerializer.Serialize(config, typeInfo);
+        if (autoSummarized.Count > 0)
+        {
+            json = TagAutoSummaries(json, capabilities, autoSummarized);
+        }
 
         var header = new StringBuilder();
         header.AppendLine($"// Orchestrator catalog generated by `mcp-orchestrator init` from {sourceLabel}.");
         header.AppendLine("// Each entry is one downstream MCP server. For each capability, fill in a one-line");
         header.AppendLine("// \"summary\" — the agent reads it to choose which capability to call. An optional");
         header.AppendLine("// \"instructions\" when/how hint can be added by hand, but the summary usually suffices.");
+        if (autoSummarized.Count > 0)
+        {
+            header.AppendLine("// Summaries marked \"auto-generated\" were derived from each server's own instructions");
+            header.AppendLine("// or tool list — review them and refine any that read poorly.");
+        }
         header.AppendLine("// Reference: https://github.com/Byggarepop/dotnet-mcp-orchestrator#configuration-reference");
         return header.ToString() + json + Environment.NewLine;
+    }
+
+    /// <summary>
+    /// Appends <see cref="AutoSummaryComment"/> to the summary line of each auto-summarized
+    /// capability. Each capability serializes exactly one "summary" property at the capability
+    /// indent depth, in catalog order, so the Nth such line belongs to <paramref name="capabilities"/>[N].
+    /// (The depth check keeps a user env var literally named "summary" from being miscounted.)
+    /// </summary>
+    private static string TagAutoSummaries(string json, List<CapabilityDescriptor> capabilities, IReadOnlyList<string> autoSummarized)
+    {
+        var auto = new HashSet<string>(autoSummarized, StringComparer.Ordinal);
+        var lines = json.Split('\n');
+        var next = 0;
+        for (var i = 0; i < lines.Length && next < capabilities.Count; i++)
+        {
+            if (!lines[i].StartsWith("      \"summary\":", StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            if (auto.Contains(capabilities[next++].Name))
+            {
+                var body = lines[i].TrimEnd('\r');
+                var newline = body.Length == lines[i].Length ? string.Empty : "\r";
+                lines[i] = $"{body} {AutoSummaryComment}{newline}";
+            }
+        }
+
+        return string.Join('\n', lines);
     }
 
     /// <summary>Copies the host config to a sibling <c>.bak</c> file, avoiding clobbering an earlier backup.</summary>
@@ -296,17 +374,20 @@ public static class InitCommand
 
         w.WriteLine();
         w.WriteLine("Next:");
-        w.WriteLine($"  1. Open {Path.GetFileName(outPath)} and add a one-line \"summary\" for each capability.");
+        w.WriteLine(plan.AutoSummarized.Count > 0
+            ? $"  1. Review the auto-generated summaries in {Path.GetFileName(outPath)} and refine any that look off."
+            : $"  1. Open {Path.GetFileName(outPath)} and add a one-line \"summary\" for each capability.");
         w.WriteLine("  2. Restart your MCP host so it picks up the orchestrator.");
     }
 
-    /// <summary>The result of <see cref="Plan"/>: the two file bodies plus what was imported/skipped.</summary>
+    /// <summary>The result of <see cref="Plan"/>: the two file bodies plus what was imported/skipped/summarized.</summary>
     internal sealed record InitPlan(
         string NewHostConfigText,
         string OrchestratorConfigText,
         IReadOnlyList<string> ImportedNames,
         IReadOnlyList<string> SkippedRemote,
-        string ContainerKey);
+        string ContainerKey,
+        IReadOnlyList<string> AutoSummarized);
 
     /// <summary>Parsed, validated command-line options for the subcommand.</summary>
     private sealed class ParsedArgs
@@ -317,6 +398,7 @@ public static class InitCommand
         public string? DevFeed { get; private init; }
         public bool Force { get; private init; }
         public bool DryRun { get; private init; }
+        public bool NoSummarize { get; private init; }
         public bool ShowHelp { get; private init; }
 
         /// <summary>Returns a copy with the host config set to an auto-detected path. Used when no
@@ -329,13 +411,14 @@ public static class InitCommand
             DevFeed = DevFeed,
             Force = Force,
             DryRun = DryRun,
+            NoSummarize = NoSummarize,
             ShowHelp = ShowHelp,
         };
 
         public static ParsedArgs Parse(string[] args)
         {
             string? host = null, outPath = null, command = null, devFeed = null;
-            bool force = false, dryRun = false, help = false;
+            bool force = false, dryRun = false, noSummarize = false, help = false;
 
             for (var i = 0; i < args.Length; i++)
             {
@@ -356,6 +439,9 @@ public static class InitCommand
                         break;
                     case "--dry-run":
                         dryRun = true;
+                        break;
+                    case "--no-summarize":
+                        noSummarize = true;
                         break;
                     case "-h":
                     case "--help":
@@ -390,6 +476,7 @@ public static class InitCommand
                 DevFeed = devFeed,
                 Force = force,
                 DryRun = dryRun,
+                NoSummarize = noSummarize,
                 ShowHelp = help,
             };
         }
@@ -419,7 +506,9 @@ public static class InitCommand
 
         WHAT IT DOES
           1. Reads your MCP host config (.mcp.json / .vscode/mcp.json / Cursor / Claude Desktop).
-          2. Writes orchestrator.config.json next to it — one capability per stdio server.
+          2. Connects to each stdio server once and writes orchestrator.config.json next to the
+             host config — one capability per server, its "summary" auto-generated from the
+             server's own instructions or tool list (skip with --no-summarize).
           3. Backs up the host config (<name>.bak), then rewrites it to launch ONLY the
              orchestrator, pointed at the new catalog via MCP_ORCHESTRATOR_CONFIG.
           Remote (http/sse) servers can't be relayed over stdio; they're left in place untouched.
@@ -445,11 +534,15 @@ public static class InitCommand
                                    --source <path> --yes. Mutually exclusive with --command.
           --force                Overwrite an existing catalog file.
           --dry-run              Print both files and the summary; write nothing.
+          --no-summarize         Don't connect to the servers to auto-generate summaries; keep
+                                 the TODO placeholders instead. Use when a server is slow or
+                                 side-effectful to start. A server that fails to start is skipped
+                                 silently either way (it keeps the TODO placeholder).
           -h, --help             Show this help.
 
         NEXT
-          Open the generated catalog and add a one-line "summary" for each capability — the agent
-          uses it to choose which capability to call — then restart your MCP host.
+          Review the auto-generated "summary" lines in the catalog — the agent reads them to choose
+          which capability to call — refine any that look off, then restart your MCP host.
         """;
 }
 

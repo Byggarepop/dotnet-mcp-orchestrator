@@ -663,7 +663,7 @@ Each entry in `capabilities` is one downstream MCP server.
 | Field | Required | Default | Meaning |
 | --- | --- | --- | --- |
 | `name` | yes | — | Short, unique id the agent uses to address the capability. Matched case-insensitively. Duplicates are ignored (first wins). |
-| `summary` | recommended | `""` | One-line description shown to the model. |
+| `summary` | recommended | `""` | One-line description shown to the model. `init` auto-generates it by connecting to the server once, from its `initialize` instructions (first sentence) or its tool names — such lines carry a trailing `// auto-generated` comment. Pass `init --no-summarize` to skip the connections and keep `TODO` placeholders instead. |
 | `instructions` | recommended | `""` | Prescriptive usage guidance: which tool, what arguments. The courier relies on this. |
 | `enabled` | no | `true` | When `false`, the capability is skipped entirely. |
 | `transport` | no | `"stdio"` | Only `stdio` is implemented. |
