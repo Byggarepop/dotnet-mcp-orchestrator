@@ -761,6 +761,16 @@ one, run `mcp-orchestrator init <host-config> --print-central` — it prints onl
 catalog to stdout (no file writes, no host-config rewrite), ready to pipe into whatever serves
 the URL.
 
+**Try it now.** A ready-made central catalog is committed at
+[`docs/orchestrator.central.example.json`](https://github.com/Byggarepop/dotnet-mcp-orchestrator/blob/main/docs/orchestrator.central.example.json)
+(npx-based servers, works on any machine with Node.js). Point the orchestrator at GitHub's copy:
+
+```json
+"env": {
+  "MCP_ORCHESTRATOR_CONFIG_URL": "https://raw.githubusercontent.com/Byggarepop/dotnet-mcp-orchestrator/main/docs/orchestrator.central.example.json"
+}
+```
+
 ### Setting environment variables (`MCP_ORCHESTRATOR_CONFIG` and the rest)
 
 All of the orchestrator's environment variables are read from the process the host launches, so the
