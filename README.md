@@ -64,7 +64,7 @@ cd ~/my-project
 dotnet tool execute McpOrchestrator --yes init      # dnx McpOrchestrator --yes init  works too
 ```
 
-It lifts every stdio server into a generated `orchestrator.config.json` (one capability each), backs up the original to `.bak`, then rewrites it to launch **only** the orchestrator — pointed at the new catalog via `MCP_ORCHESTRATOR_CONFIG` and launched the same install-free way, pinned to this version. Along the way it connects to each server once and auto-generates its one-line `summary` from what the server declares about itself — no LLM, fully offline. Remote (http/sse) servers can't be relayed over stdio, so they're left in place untouched. (`--dry-run` previews everything; `--no-summarize` skips the server connections.)
+It lifts every stdio server into a generated `orchestrator.config.json` (one capability each), backs up the original to `.bak`, then rewrites it to launch **only** the orchestrator — pointed at the new catalog via `MCP_ORCHESTRATOR_CONFIG` and launched the same install-free way. Along the way it connects to each server once and auto-generates its one-line `summary` from what the server declares about itself — no LLM, fully offline. Remote (http/sse) servers can't be relayed over stdio, so they're left in place untouched. (`--dry-run` previews everything; `--no-summarize` skips the server connections.)
 
 > No .NET SDK? Download the self-contained Native-AOT binary from [GitHub Releases](https://github.com/Byggarepop/dotnet-mcp-orchestrator/releases), unzip it, and pass the binary's absolute path to `init` with `--command <path>`. It needs no .NET at all.
 
