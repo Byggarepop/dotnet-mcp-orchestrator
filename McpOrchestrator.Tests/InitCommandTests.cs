@@ -51,6 +51,25 @@ public sealed class InitCommandTests
         }
     }
 
+    /// <summary>Runs <paramref name="body"/> with the process current directory set to a fresh empty
+    /// temp dir, restoring it afterward. Safe because the ConsoleSerial collection serializes these.</summary>
+    private static async Task<T> InTempDir<T>(Func<string, Task<T>> body)
+    {
+        var dir = Path.Combine(Path.GetTempPath(), $"init-cli-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(dir);
+        var prev = Directory.GetCurrentDirectory();
+        Directory.SetCurrentDirectory(dir);
+        try
+        {
+            return await body(dir);
+        }
+        finally
+        {
+            Directory.SetCurrentDirectory(prev);
+            try { Directory.Delete(dir, recursive: true); } catch { /* best effort */ }
+        }
+    }
+
     private static OrchestratorConfig ParseCatalog(string text) =>
         JsonSerializer.Deserialize(text, OrchestratorConfigJsonContext.Default.OrchestratorConfig)!;
 
@@ -196,11 +215,50 @@ public sealed class InitCommandTests
     }
 
     [Fact]
-    public async Task No_host_path_is_a_usage_error()
+    public async Task No_host_path_with_nothing_to_discover_is_a_usage_error()
     {
-        var (code, _, stderr) = await Run();
+        var (code, _, stderr) = await InTempDir(_ => Run());
         Assert.Equal(1, code);
         Assert.Contains("host config path is required", stderr);
+        Assert.Contains("none were found", stderr);
+    }
+
+    [Fact]
+    public async Task No_host_path_auto_detects_a_host_config_in_cwd()
+    {
+        var (code, _, stderr) = await InTempDir(async dir =>
+        {
+            await File.WriteAllTextAsync(Path.Combine(dir, ".mcp.json"), ClaudeStyle);
+            return await Run("--dry-run");
+        });
+
+        // Discovery announced the file on stderr, and init ran (dry-run → exit 0, wrote nothing).
+        Assert.Equal(0, code);
+        Assert.Contains("using discovered", stderr);
+        Assert.Contains(".mcp.json", stderr);
+    }
+
+    [Fact]
+    public void DiscoverHostConfig_finds_host_config_but_ignores_orchestrator_config()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), $"init-discover-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(dir);
+        try
+        {
+            // An orchestrator.config.json is init's OUTPUT, never an input — it must not be detected.
+            File.WriteAllText(Path.Combine(dir, "orchestrator.config.json"), "{}");
+            Assert.Null(InitCommand.DiscoverHostConfig(dir));
+
+            // A real host config in the same dir is found.
+            File.WriteAllText(Path.Combine(dir, ".mcp.json"), "{}");
+            var hit = InitCommand.DiscoverHostConfig(dir);
+            Assert.NotNull(hit);
+            Assert.EndsWith(".mcp.json", hit);
+        }
+        finally
+        {
+            Directory.Delete(dir, recursive: true);
+        }
     }
 
     [Fact]

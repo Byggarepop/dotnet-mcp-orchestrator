@@ -15,6 +15,11 @@ uses it as the GitHub Release notes — so keep an entry per released version.
   `.vscode/mcp.json`, `.cursor/mcp.json`, `mcp.json` that exists (`orchestrator.config.json` is
   profiled directly; the others are imported like `--host-config`). This also supplies the config
   for `--trace`, so `profile --trace session.jsonl` works without naming a config file.
+- `init` now auto-detects the host config to adopt when no `<host-config>` argument is given: it
+  looks in the current directory and uses the first of `.mcp.json`, `.vscode/mcp.json`,
+  `.cursor/mcp.json`, `mcp.json` that exists (the generated `orchestrator.config.json` is init's
+  output, so it's never auto-detected as input). So `cd` into a project and run `mcp-orchestrator
+  init`.
 
 ## [0.2.3] - 2026-06-25
 

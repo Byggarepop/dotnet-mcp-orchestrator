@@ -50,6 +50,25 @@ public static class InitCommand
             return 0;
         }
 
+        // No <host-config> argument? Look in the current directory for one to adopt — whatever MCP
+        // host config the tool you use drops there (.mcp.json, .vscode/mcp.json, .cursor/mcp.json).
+        // First match by the precedence below wins.
+        if (parsed.HostConfigPath is null)
+        {
+            var discovered = DiscoverHostConfig(Directory.GetCurrentDirectory());
+            if (discovered is null)
+            {
+                Console.Error.WriteLine(
+                    "init: a host config path is required, e.g. 'mcp-orchestrator init .mcp.json'. " +
+                    $"With none given, init looks in the current directory for: {HostConfigCandidateList} — none were found.");
+                Console.Error.WriteLine("Run 'mcp-orchestrator init --help' for usage.");
+                return 1;
+            }
+
+            parsed = parsed.WithHostConfig(discovered);
+            Console.Error.WriteLine($"init: no host config given; using discovered {discovered}.");
+        }
+
         try
         {
             return await Task.FromResult(Execute(parsed));
@@ -59,6 +78,42 @@ public static class InitCommand
             Console.Error.WriteLine($"init: {ex.Message}");
             return 1;
         }
+    }
+
+    /// <summary>
+    /// Host-config filenames probed, in precedence order, when no <c>&lt;host-config&gt;</c> argument
+    /// is given. These are the files different MCP clients drop in a project root.
+    /// <c>orchestrator.config.json</c> is deliberately absent — that's init's <em>output</em>, not a
+    /// host config to adopt. Relative to the search directory.
+    /// </summary>
+    private static readonly string[] HostConfigCandidates =
+    {
+        ".mcp.json",
+        Path.Combine(".vscode", "mcp.json"),
+        Path.Combine(".cursor", "mcp.json"),
+        "mcp.json",
+    };
+
+    /// <summary>Human-readable list of the probed host-config locations, for help text and errors.</summary>
+    internal static string HostConfigCandidateList =>
+        string.Join(", ", HostConfigCandidates.Select(c => c.Replace('\\', '/')));
+
+    /// <summary>
+    /// Probes <paramref name="directory"/> for the first existing host config in
+    /// <see cref="HostConfigCandidates"/>. Returns its full path, or <c>null</c> if none exist.
+    /// </summary>
+    internal static string? DiscoverHostConfig(string directory)
+    {
+        foreach (var relativePath in HostConfigCandidates)
+        {
+            var candidate = Path.Combine(directory, relativePath);
+            if (File.Exists(candidate))
+            {
+                return Path.GetFullPath(candidate);
+            }
+        }
+
+        return null;
     }
 
     private static int Execute(ParsedArgs parsed)
@@ -264,6 +319,19 @@ public static class InitCommand
         public bool DryRun { get; private init; }
         public bool ShowHelp { get; private init; }
 
+        /// <summary>Returns a copy with the host config set to an auto-detected path. Used when no
+        /// <c>&lt;host-config&gt;</c> argument was given on the command line.</summary>
+        public ParsedArgs WithHostConfig(string path) => new()
+        {
+            HostConfigPath = path,
+            OutPath = OutPath,
+            OrchestratorCommand = OrchestratorCommand,
+            DevFeed = DevFeed,
+            Force = Force,
+            DryRun = DryRun,
+            ShowHelp = ShowHelp,
+        };
+
         public static ParsedArgs Parse(string[] args)
         {
             string? host = null, outPath = null, command = null, devFeed = null;
@@ -307,11 +375,8 @@ public static class InitCommand
                 }
             }
 
-            if (!help && host is null)
-            {
-                throw new ArgumentException("a host config path is required, e.g. 'mcp-orchestrator init .mcp.json'.");
-            }
-
+            // A null host is no longer an error here: RunAsync tries to auto-detect one from the
+            // current directory before failing. The mutual-exclusivity check still applies.
             if (command is not null && devFeed is not null)
             {
                 throw new ArgumentException("--command and --dev-feed are mutually exclusive (each sets how the host launches the orchestrator).");
@@ -349,6 +414,7 @@ public static class InitCommand
         mcp-orchestrator init — adopt an existing MCP host config into the orchestrator
 
         USAGE
+          mcp-orchestrator init [options]                  (auto-detect a host config in the cwd)
           mcp-orchestrator init <host-config> [options]
 
         WHAT IT DOES
@@ -358,8 +424,14 @@ public static class InitCommand
              orchestrator, pointed at the new catalog via MCP_ORCHESTRATOR_CONFIG.
           Remote (http/sse) servers can't be relayed over stdio; they're left in place untouched.
 
+        AUTO-DETECT
+          With no <host-config>, init looks in the current directory and adopts the first host config
+          it finds, in this order: .mcp.json, .vscode/mcp.json, .cursor/mcp.json, mcp.json. So you can
+          just cd into the project and run 'mcp-orchestrator init'.
+
         ARGUMENTS
-          <host-config>          Path to the MCP host config to adopt (required).
+          <host-config>          Path to the MCP host config to adopt. Optional — if omitted, init
+                                 auto-detects one from the current directory (see AUTO-DETECT).
 
         OPTIONS
           --out <path>           Where to write the catalog. Default: orchestrator.config.json

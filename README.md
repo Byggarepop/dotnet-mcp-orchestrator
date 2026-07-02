@@ -67,7 +67,14 @@ dotnet tool install --global McpOrchestrator
 
 ### 2. Init
 
-Point `init` at your existing MCP host config — `.mcp.json` (Claude Code, Visual Studio), `.vscode/mcp.json` (VS Code), or a Cursor / Claude Desktop config:
+`cd` into a folder that holds your MCP host config and run `init` with no path — it auto-detects the first of `.mcp.json`, `.vscode/mcp.json`, `.cursor/mcp.json`, `mcp.json`:
+
+```bash
+cd ~/my-project
+mcp-orchestrator init
+```
+
+Or point it at a specific config — `.mcp.json` (Claude Code, Visual Studio), `.vscode/mcp.json` (VS Code), or a Cursor / Claude Desktop config:
 
 ```bash
 mcp-orchestrator init path/to/.mcp.json
