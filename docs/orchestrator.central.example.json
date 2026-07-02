@@ -2,8 +2,17 @@
   "//": "Example CENTRALLY SERVED orchestrator catalog — try central config mode against this file as served by GitHub:",
   "//use": "set MCP_ORCHESTRATOR_CONFIG_URL=https://raw.githubusercontent.com/Byggarepop/dotnet-mcp-orchestrator/main/docs/orchestrator.central.example.json in the orchestrator's env block, restart your MCP host once, and the catalog below goes live (then updates within the poll interval, default 300 s).",
   "//rules": "A central catalog must work on every consuming machine: no ${CONFIG_DIR} or ${SOLUTION_DIR} (validation rejects them). Use ${ENV_VAR} — resolved on each machine, which also keeps secrets out of this shared file — or absolute paths.",
-  "//servers": "The entries below launch via npx, so they work anywhere Node.js is installed. Downstream servers start lazily on first use; the generous connectTimeoutSeconds covers npx downloading a package on its first run.",
+  "//servers": "The entries below launch via npx (needs Node.js) or dotnet tool execute (needs the .NET SDK), so they work on any machine. Downstream servers start lazily on first use; the generous connectTimeoutSeconds covers the package download on a first run.",
   "capabilities": [
+    {
+      "name": "tokensaver",
+      "summary": "Token-efficient source reading for .NET/web codebases: outline C#/VB files (signatures + line ranges), minify whole files of many languages, trace DI registrations.",
+      "enabled": true,
+      "transport": "stdio",
+      "command": "dotnet",
+      "args": ["tool", "execute", "TokenSaver.Mcp", "--yes"],
+      "connectTimeoutSeconds": 120
+    },
     {
       "name": "everything",
       "summary": "MCP reference server with demo tools (echo, add, longRunningOperation, sampling and more) — a safe playground to route to.",

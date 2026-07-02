@@ -374,7 +374,7 @@ public sealed class CentralConfigTests
             forbidLocalPlaceholders: true, NullLogger.Instance);
 
         Assert.NotNull(loaded);
-        Assert.Equal(new[] { "everything", "files" }, loaded!.Catalog.Names);
+        Assert.Equal(new[] { "tokensaver", "everything", "files" }, loaded!.Catalog.Names);
     }
 
     // ----- helpers ------------------------------------------------------------------------------------
