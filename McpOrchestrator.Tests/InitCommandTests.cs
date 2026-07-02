@@ -412,6 +412,38 @@ public sealed class InitCommandTests
     }
 
     [Fact]
+    public async Task Print_central_prints_only_the_catalog_and_writes_nothing()
+    {
+        var (code, stdout, hostUntouched, nothingWritten) = await InTempDir(async dir =>
+        {
+            var hostPath = Path.Combine(dir, ".mcp.json");
+            await File.WriteAllTextAsync(hostPath, ClaudeStyle);
+
+            var (c, o, _) = await Run(hostPath, "--print-central", "--no-summarize");
+
+            return (c, o,
+                await File.ReadAllTextAsync(hostPath) == ClaudeStyle && !File.Exists(hostPath + ".bak"),
+                !File.Exists(Path.Combine(dir, "orchestrator.config.json")));
+        });
+
+        Assert.Equal(0, code);
+        Assert.True(hostUntouched);
+        Assert.True(nothingWritten);
+
+        // stdout is exactly the catalog — pipe-able into whatever serves the central URL.
+        var catalog = ParseCatalog(stdout);
+        Assert.Equal(new[] { "files", "jira" }, catalog.Capabilities.Select(c => c.Name));
+    }
+
+    [Fact]
+    public async Task Print_central_and_dry_run_together_is_an_error()
+    {
+        var (code, _, stderr) = await Run("x.json", "--print-central", "--dry-run");
+        Assert.Equal(1, code);
+        Assert.Contains("mutually exclusive", stderr);
+    }
+
+    [Fact]
     public async Task Existing_catalog_without_force_is_an_error()
     {
         var dir = Path.Combine(Path.GetTempPath(), $"init-test-{Guid.NewGuid():N}");

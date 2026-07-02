@@ -156,15 +156,15 @@ public sealed partial class CapabilityCatalog : ICapabilityCatalog
     {
         var fullPath = Path.GetFullPath(configPath);
 
-        OrchestratorConfig? config;
+        string text;
         try
         {
-            config = JsonSerializer.Deserialize(File.ReadAllText(fullPath), OrchestratorConfigJsonContext.Default.OrchestratorConfig);
+            text = File.ReadAllText(fullPath);
         }
-        catch (Exception ex) when (ex is JsonException or IOException or UnauthorizedAccessException)
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
             logger.LogError(
-                ex, "Config reload rejected: failed to read or parse {ConfigPath}. Keeping the current config.", fullPath);
+                ex, "Config reload rejected: failed to read {ConfigPath}. Keeping the current config.", fullPath);
             return null;
         }
 
@@ -180,10 +180,55 @@ public sealed partial class CapabilityCatalog : ICapabilityCatalog
             ["SOLUTION_DIR"] = solutionDir,
         };
 
+        return TryParseForReload(text, fullPath, placeholders, forbidLocalPlaceholders: false, logger);
+    }
+
+    /// <summary>
+    /// The text half of <see cref="TryLoadForReload"/>, shared with centrally served configs
+    /// (which arrive over HTTP rather than from a file). Same strictness; additionally, when
+    /// <paramref name="forbidLocalPlaceholders"/> is set, <c>${CONFIG_DIR}</c> and
+    /// <c>${SOLUTION_DIR}</c> reject the config — they resolve to machine-local paths that mean
+    /// nothing in a shared catalog; <c>${ENV_VAR}</c> or absolute paths are the supported way.
+    /// </summary>
+    internal static ReloadedConfig? TryParseForReload(
+        string configText,
+        string sourceLabel,
+        IReadOnlyDictionary<string, string> builtinPlaceholders,
+        bool forbidLocalPlaceholders,
+        ILogger logger)
+    {
+        OrchestratorConfig? config;
+        try
+        {
+            config = JsonSerializer.Deserialize(configText, OrchestratorConfigJsonContext.Default.OrchestratorConfig);
+        }
+        catch (JsonException ex)
+        {
+            logger.LogError(
+                ex, "Config reload rejected: failed to parse {Source}. Keeping the current config.", sourceLabel);
+            return null;
+        }
+
+        var entries = config?.Capabilities ?? new();
+
+        if (forbidLocalPlaceholders)
+        {
+            var forbidden = FindForbiddenPlaceholder(entries);
+            if (forbidden is not null)
+            {
+                logger.LogError(
+                    "Config reload rejected: {Source} uses ${{{Placeholder}}}, which resolves to a "
+                    + "machine-local path and is invalid in a centrally served config. Use ${{ENV_VAR}} "
+                    + "(resolved on each consuming machine) or absolute paths instead. Keeping the current config.",
+                    sourceLabel, forbidden);
+                return null;
+            }
+        }
+
         // Resolve every entry — disabled ones too, so the differ compares launch fields on equal
         // footing across an enabled/disabled flip.
-        var all = (config?.Capabilities ?? new())
-            .Select(c => Resolve(c, placeholders, logger))
+        var all = entries
+            .Select(c => Resolve(c, builtinPlaceholders, logger))
             .ToList();
 
         // Strict validation over the enabled entries: reject the whole reload rather than silently
@@ -200,12 +245,45 @@ public sealed partial class CapabilityCatalog : ICapabilityCatalog
             if (problem is not null)
             {
                 logger.LogError(
-                    "Config reload rejected: {Problem} in {ConfigPath}. Keeping the current config.", problem, fullPath);
+                    "Config reload rejected: {Problem} in {Source}. Keeping the current config.", problem, sourceLabel);
                 return null;
             }
         }
 
-        return new ReloadedConfig(FromDescriptors(all, logger, fullPath), all);
+        return new ReloadedConfig(FromDescriptors(all, logger, sourceLabel), all);
+    }
+
+    /// <summary>
+    /// Returns the name of the first machine-local placeholder (<c>CONFIG_DIR</c> /
+    /// <c>SOLUTION_DIR</c>) used anywhere in a substitutable field, or <c>null</c> when clean.
+    /// </summary>
+    private static string? FindForbiddenPlaceholder(IEnumerable<CapabilityDescriptor> entries)
+    {
+        foreach (var c in entries)
+        {
+            var fields = new[] { c.Command, c.WorkingDirectory }
+                .Concat(c.Args)
+                .Concat(c.Env.Values);
+            foreach (var value in fields)
+            {
+                if (string.IsNullOrEmpty(value))
+                {
+                    continue;
+                }
+
+                foreach (System.Text.RegularExpressions.Match match in PlaceholderRegex().Matches(value))
+                {
+                    var key = match.Groups[1].Value;
+                    if (key.Equals("CONFIG_DIR", StringComparison.OrdinalIgnoreCase)
+                        || key.Equals("SOLUTION_DIR", StringComparison.OrdinalIgnoreCase))
+                    {
+                        return key;
+                    }
+                }
+            }
+        }
+
+        return null;
     }
 
     /// <summary>

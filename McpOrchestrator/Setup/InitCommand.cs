@@ -127,7 +127,7 @@ public static class InitCommand
         var hostDir = Path.GetDirectoryName(hostPath) ?? Directory.GetCurrentDirectory();
         var outPath = Path.GetFullPath(parsed.OutPath ?? Path.Combine(hostDir, "orchestrator.config.json"));
 
-        if (File.Exists(outPath) && !parsed.Force && !parsed.DryRun)
+        if (File.Exists(outPath) && !parsed.Force && !parsed.DryRun && !parsed.PrintCentral)
         {
             throw new IOException(
                 $"'{outPath}' already exists. Re-run with --force to overwrite it, or pass --out <path> to write elsewhere.");
@@ -181,6 +181,14 @@ public static class InitCommand
             throw new InvalidDataException(
                 "no importable stdio servers found in the host config. " +
                 "The orchestrator only relays stdio servers; remote (http/sse) entries are left untouched.");
+        }
+
+        if (parsed.PrintCentral)
+        {
+            // Only the catalog itself on stdout — pipe-able straight into whatever serves the
+            // central config URL. No file writes, no host-config rewrite, no backup.
+            Console.Out.Write(plan.OrchestratorConfigText);
+            return 0;
         }
 
         if (parsed.DryRun)
@@ -399,6 +407,7 @@ public static class InitCommand
         public bool Force { get; private init; }
         public bool DryRun { get; private init; }
         public bool NoSummarize { get; private init; }
+        public bool PrintCentral { get; private init; }
         public bool ShowHelp { get; private init; }
 
         /// <summary>Returns a copy with the host config set to an auto-detected path. Used when no
@@ -412,13 +421,14 @@ public static class InitCommand
             Force = Force,
             DryRun = DryRun,
             NoSummarize = NoSummarize,
+            PrintCentral = PrintCentral,
             ShowHelp = ShowHelp,
         };
 
         public static ParsedArgs Parse(string[] args)
         {
             string? host = null, outPath = null, command = null, devFeed = null;
-            bool force = false, dryRun = false, noSummarize = false, help = false;
+            bool force = false, dryRun = false, noSummarize = false, printCentral = false, help = false;
 
             for (var i = 0; i < args.Length; i++)
             {
@@ -442,6 +452,9 @@ public static class InitCommand
                         break;
                     case "--no-summarize":
                         noSummarize = true;
+                        break;
+                    case "--print-central":
+                        printCentral = true;
                         break;
                     case "-h":
                     case "--help":
@@ -468,6 +481,11 @@ public static class InitCommand
                 throw new ArgumentException("--command and --dev-feed are mutually exclusive (each sets how the host launches the orchestrator).");
             }
 
+            if (printCentral && dryRun)
+            {
+                throw new ArgumentException("--print-central and --dry-run are mutually exclusive (each is its own print-only mode).");
+            }
+
             return new ParsedArgs
             {
                 HostConfigPath = host,
@@ -477,6 +495,7 @@ public static class InitCommand
                 Force = force,
                 DryRun = dryRun,
                 NoSummarize = noSummarize,
+                PrintCentral = printCentral,
                 ShowHelp = help,
             };
         }
@@ -534,6 +553,10 @@ public static class InitCommand
                                    --source <path> --yes. Mutually exclusive with --command.
           --force                Overwrite an existing catalog file.
           --dry-run              Print both files and the summary; write nothing.
+          --print-central        Print ONLY the generated catalog to stdout and write nothing
+                                 (no host-config rewrite, no backup) — pipe it into whatever
+                                 serves your team's central config URL
+                                 (MCP_ORCHESTRATOR_CONFIG_URL).
           --no-summarize         Don't connect to the servers to auto-generate summaries; keep
                                  the TODO placeholders instead. Use when a server is slow or
                                  side-effectful to start. A server that fails to start is skipped

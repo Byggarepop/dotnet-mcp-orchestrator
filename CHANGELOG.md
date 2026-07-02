@@ -10,6 +10,20 @@ uses it as the GitHub Release notes — so keep an entry per released version.
 ## [Unreleased]
 
 ### Added
+- Centrally managed config: set `MCP_ORCHESTRATOR_CONFIG_URL` to serve the catalog from an HTTPS
+  URL (team scenario — one shared catalog, updated in one place, picked up automatically). Source
+  selection is binary: the URL wins and the local `MCP_ORCHESTRATOR_CONFIG` path is ignored with a
+  warning; configs are never merged. Polling (default 300 s, `MCP_ORCHESTRATOR_CONFIG_POLL_SECONDS`,
+  ±10% jitter) uses ETag/If-None-Match so unchanged configs cost a 304 and skip the reload
+  pipeline; failures keep the running config, log actionable errors (distinct for 401/403), and
+  back off exponentially up to 15 minutes. Optional `MCP_ORCHESTRATOR_CONFIG_AUTH` is sent
+  verbatim as the Authorization header and never logged. Successful fetches are cached atomically
+  under `~/.mcpOrchestrator/` for offline startup (same-URL cache only; no cache → startup fails
+  loudly rather than falling back to a local file). Central payloads reject the machine-local
+  `${CONFIG_DIR}`/`${SOLUTION_DIR}` placeholders, bodies over 1 MB, and HTML responses;
+  `${ENV_VAR}` still resolves on each consuming machine (the supported way to keep secrets out of
+  the shared catalog). New `init --print-central` prints the generated catalog to stdout for
+  piping into whatever serves the URL.
 - Hot reload of `orchestrator.config.json`: the running orchestrator watches the config file
   (debounced, atomic-rename-aware) and applies edits without a host restart. Invalid edits are
   rejected with an error in the log and the running config is kept (last-known-good). Only
