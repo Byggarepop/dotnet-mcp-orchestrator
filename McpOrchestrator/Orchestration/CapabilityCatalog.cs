@@ -15,13 +15,20 @@ public sealed partial class CapabilityCatalog : ICapabilityCatalog
     public IReadOnlyList<CapabilityDescriptor> Capabilities { get; }
     public IReadOnlyList<string> Names { get; }
 
+    /// <summary>
+    /// The config file this catalog was loaded from, or <c>null</c> when built in memory
+    /// (<see cref="FromDescriptors"/>). Hot reload watches this path.
+    /// </summary>
+    public string? SourcePath { get; }
+
     private readonly Dictionary<string, CapabilityDescriptor> _byName;
 
     /// <summary>Private constructor; build instances via <see cref="Load"/> or <see cref="FromDescriptors"/>.</summary>
-    private CapabilityCatalog(IReadOnlyList<CapabilityDescriptor> capabilities)
+    private CapabilityCatalog(IReadOnlyList<CapabilityDescriptor> capabilities, string? sourcePath = null)
     {
         Capabilities = capabilities;
         Names = capabilities.Select(c => c.Name).ToArray();
+        SourcePath = sourcePath;
         _byName = capabilities.ToDictionary(c => c.Name, StringComparer.OrdinalIgnoreCase);
     }
 
@@ -34,7 +41,8 @@ public sealed partial class CapabilityCatalog : ICapabilityCatalog
     /// <see cref="Load"/>: drops entries that are disabled, unnamed, lack a launch command,
     /// or duplicate an earlier name (case-insensitive, first one wins). Exposed for tests.
     /// </summary>
-    internal static CapabilityCatalog FromDescriptors(IEnumerable<CapabilityDescriptor> capabilities, ILogger logger)
+    internal static CapabilityCatalog FromDescriptors(
+        IEnumerable<CapabilityDescriptor> capabilities, ILogger logger, string? sourcePath = null)
     {
         var kept = new List<CapabilityDescriptor>();
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -68,7 +76,7 @@ public sealed partial class CapabilityCatalog : ICapabilityCatalog
             kept.Add(c);
         }
 
-        return new CapabilityCatalog(kept);
+        return new CapabilityCatalog(kept, sourcePath);
     }
 
 
@@ -123,13 +131,81 @@ public sealed partial class CapabilityCatalog : ICapabilityCatalog
             .Where(c => c.Enabled)
             .Select(c => Resolve(c, placeholders, logger));
 
-        var catalog = FromDescriptors(resolved, logger);
+        var catalog = FromDescriptors(resolved, logger, configPath);
 
         logger.LogInformation(
             "Loaded {Count} capability/capabilities from {ConfigPath}: {Names}",
             catalog.Capabilities.Count, configPath, string.Join(", ", catalog.Names));
 
         return catalog;
+    }
+
+    /// <summary>
+    /// Reloads the config for hot reload: parse, resolve placeholders, and validate — strictly.
+    /// Unlike startup (<see cref="Load"/>), which leniently drops bad entries so the server always
+    /// comes up, a reload has a running config to protect: any problem (malformed JSON, an enabled
+    /// entry missing its name or command, duplicate names) logs an error and returns <c>null</c>,
+    /// and the caller keeps the current catalog untouched (last-known-good).
+    /// </summary>
+    /// <returns>
+    /// The new enabled catalog plus <em>every</em> resolved entry including disabled ones — the
+    /// differ needs the full list so an <c>enabled</c> toggle is a metadata change, not a
+    /// remove/add of the live downstream.
+    /// </returns>
+    internal static ReloadedConfig? TryLoadForReload(string configPath, ILogger logger)
+    {
+        var fullPath = Path.GetFullPath(configPath);
+
+        OrchestratorConfig? config;
+        try
+        {
+            config = JsonSerializer.Deserialize(File.ReadAllText(fullPath), OrchestratorConfigJsonContext.Default.OrchestratorConfig);
+        }
+        catch (Exception ex) when (ex is JsonException or IOException or UnauthorizedAccessException)
+        {
+            logger.LogError(
+                ex, "Config reload rejected: failed to read or parse {ConfigPath}. Keeping the current config.", fullPath);
+            return null;
+        }
+
+        var configDir = Path.GetDirectoryName(fullPath) ?? Directory.GetCurrentDirectory();
+        var solutionDir =
+            FindAncestorContaining("McpOrchestrator.slnx", AppContext.BaseDirectory)
+            ?? FindAncestorContaining("McpOrchestrator.slnx", configDir)
+            ?? configDir;
+
+        var placeholders = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["CONFIG_DIR"] = configDir,
+            ["SOLUTION_DIR"] = solutionDir,
+        };
+
+        // Resolve every entry — disabled ones too, so the differ compares launch fields on equal
+        // footing across an enabled/disabled flip.
+        var all = (config?.Capabilities ?? new())
+            .Select(c => Resolve(c, placeholders, logger))
+            .ToList();
+
+        // Strict validation over the enabled entries: reject the whole reload rather than silently
+        // dropping the offender (a running session must never lose a capability to a typo).
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var c in all.Where(c => c.Enabled))
+        {
+            var problem =
+                string.IsNullOrWhiteSpace(c.Name) ? "an entry has no name"
+                : string.IsNullOrWhiteSpace(c.Command) ? $"capability '{c.Name}' has no launch command"
+                : !seen.Add(c.Name) ? $"duplicate capability name '{c.Name}'"
+                : null;
+
+            if (problem is not null)
+            {
+                logger.LogError(
+                    "Config reload rejected: {Problem} in {ConfigPath}. Keeping the current config.", problem, fullPath);
+                return null;
+            }
+        }
+
+        return new ReloadedConfig(FromDescriptors(all, logger, fullPath), all);
     }
 
     /// <summary>
@@ -175,7 +251,7 @@ public sealed partial class CapabilityCatalog : ICapabilityCatalog
             .Where(c => c.Enabled)
             .Select(c => Resolve(c, placeholders, logger));
 
-        var catalog = FromDescriptors(resolved, logger);
+        var catalog = FromDescriptors(resolved, logger, fullPath);
         logger.LogInformation(
             "Loaded {Count} capability/capabilities from {ConfigPath} for profiling.",
             catalog.Capabilities.Count, fullPath);
@@ -265,3 +341,12 @@ public sealed partial class CapabilityCatalog : ICapabilityCatalog
     [GeneratedRegex(@"\$\{([A-Za-z_][A-Za-z0-9_]*)\}")]
     private static partial Regex PlaceholderRegex();
 }
+
+/// <summary>
+/// A successfully (re)loaded config: the catalog of enabled capabilities that goes live, plus
+/// every resolved entry including disabled ones, which the reload differ compares against the
+/// previous full list.
+/// </summary>
+internal sealed record ReloadedConfig(
+    CapabilityCatalog Catalog,
+    IReadOnlyList<CapabilityDescriptor> AllEntries);

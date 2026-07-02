@@ -10,6 +10,15 @@ uses it as the GitHub Release notes — so keep an entry per released version.
 ## [Unreleased]
 
 ### Added
+- Hot reload of `orchestrator.config.json`: the running orchestrator watches the config file
+  (debounced, atomic-rename-aware) and applies edits without a host restart. Invalid edits are
+  rejected with an error in the log and the running config is kept (last-known-good). Only
+  launch-relevant changes (command, args, env values, working directory, transport, timeouts)
+  restart a downstream — in-flight calls drain first, and the new definition connects lazily on
+  next use; summary/instructions/enabled edits apply in place. `list_capabilities` reflects the
+  new config immediately. On by default; opt out with `MCP_ORCHESTRATOR_NO_RELOAD=1`. The reload
+  pipeline is trigger → load + validate → diff + apply, with the file watcher as the first
+  pluggable trigger (a polled central config can slot in later).
 - `profile` now auto-detects a config when neither `--config` nor `--host-config` is given: it
   looks in the current directory and uses the first of `orchestrator.config.json`, `.mcp.json`,
   `.vscode/mcp.json`, `.cursor/mcp.json`, `mcp.json` that exists (`orchestrator.config.json` is

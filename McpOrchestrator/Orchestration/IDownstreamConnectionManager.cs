@@ -28,6 +28,22 @@ public interface IDownstreamConnectionManager
         CancellationToken cancellationToken);
 }
 
+/// <summary>
+/// Runtime lifecycle control over downstream connections, used by the config reload pipeline.
+/// Split from <see cref="IDownstreamConnectionManager"/> because routing never needs it — and so
+/// reload tests can spy the lifecycle without spawning real processes.
+/// </summary>
+public interface IDownstreamConnectionLifecycle
+{
+    /// <summary>
+    /// Retires the cached connection for a capability, if one exists: waits for in-flight calls
+    /// against it to drain (they complete or hit their normal timeouts), then disposes it. Calls
+    /// arriving after the retirement connect fresh using the then-current catalog definition.
+    /// No-op when the capability has no cached connection.
+    /// </summary>
+    Task InvalidateAsync(string capability, CancellationToken cancellationToken);
+}
+
 /// <summary>Thrown when a request names a capability that is not in the catalog.</summary>
 public sealed class CapabilityNotFoundException(string capability, IReadOnlyList<string> available)
     : Exception($"Unknown capability '{capability}'. Available: {(available.Count == 0 ? "(none)" : string.Join(", ", available))}.")

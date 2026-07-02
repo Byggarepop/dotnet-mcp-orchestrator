@@ -52,14 +52,25 @@ public static class OrchestratorHost
         }
 
         // Orchestration services:
-        //  - ICapabilityCatalog          : the address book of downstream MCPs (from config).
+        //  - CapabilityRegistry / ICapabilityCatalog: the address book of downstream MCPs. The
+        //    registry wraps the loaded catalog in a hot-swappable holder so a config reload can
+        //    replace the snapshot at runtime; every reader resolves through it.
         //  - IDownstreamConnectionManager: connects to / proxies calls to those MCPs (MCP client).
+        //    Also registered as IDownstreamConnectionLifecycle so the reload pipeline can retire
+        //    connections of removed/changed capabilities.
         var contentRoot = builder.Environment.ContentRootPath;
-        builder.Services.AddSingleton<ICapabilityCatalog>(sp =>
-            CapabilityCatalog.Load(
+        builder.Services.AddSingleton<CapabilityRegistry>(sp =>
+            new CapabilityRegistry(CapabilityCatalog.Load(
                 contentRoot,
-                sp.GetRequiredService<ILoggerFactory>().CreateLogger<CapabilityCatalog>()));
-        builder.Services.AddSingleton<IDownstreamConnectionManager, DownstreamConnectionManager>();
+                sp.GetRequiredService<ILoggerFactory>().CreateLogger<CapabilityCatalog>())));
+        builder.Services.AddSingleton<ICapabilityCatalog>(sp => sp.GetRequiredService<CapabilityRegistry>());
+        builder.Services.AddSingleton<DownstreamConnectionManager>();
+        builder.Services.AddSingleton<IDownstreamConnectionManager>(sp => sp.GetRequiredService<DownstreamConnectionManager>());
+        builder.Services.AddSingleton<IDownstreamConnectionLifecycle>(sp => sp.GetRequiredService<DownstreamConnectionManager>());
+
+        // Config hot reload (on by default; MCP_ORCHESTRATOR_NO_RELOAD=1 opts out): watches the
+        // config file and applies edits at runtime without restarting the host.
+        builder.Services.AddHostedService<Orchestration.Reload.ConfigHotReloadService>();
 
         // Optional session-trace side-channel (--trace-out <path> or MCP_ORCHESTRATOR_TRACE_OUT).
         // The connection manager picks this up by DI and records each discover/route so the run can

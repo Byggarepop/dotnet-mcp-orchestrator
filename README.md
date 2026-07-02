@@ -84,9 +84,9 @@ It lifts every stdio server into a generated `orchestrator.config.json` (one cap
 
 ### 3. Review the summaries (optional)
 
-Open the generated `orchestrator.config.json` and review the auto-generated summaries — each is marked with a trailing `// auto-generated` comment — and refine any that look off; that line is what the agent reads to route. A server that failed to start keeps a `TODO` placeholder to fill in by hand. Then restart your MCP host.
+Open the generated `orchestrator.config.json` and review the auto-generated summaries — each is marked with a trailing `// auto-generated` comment — and refine any that look off; that line is what the agent reads to route. A server that failed to start keeps a `TODO` placeholder to fill in by hand. Then restart your MCP host so it picks up the orchestrator entry.
 
-That's it. The agent now sees three meta-tools and the flow is `list_capabilities` → `discover_tools("…")` → `route("…", "<tool>", { … })`.
+That's it. The agent now sees three meta-tools and the flow is `list_capabilities` → `discover_tools("…")` → `route("…", "<tool>", { … })`. And from here on you can edit `orchestrator.config.json` at any time — the running orchestrator [hot-reloads it](https://github.com/Byggarepop/dotnet-mcp-orchestrator/blob/main/McpOrchestrator/README.md#hot-reload), no restart needed.
 
 > Starting from scratch with no MCP config yet? See [Manual setup](#manual-setup) for the two files `init` would otherwise generate. Logs are mirrored to `~/.mcpOrchestrator/orchestrator.log`.
 

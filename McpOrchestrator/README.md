@@ -699,6 +699,27 @@ need any of these — plain absolute paths work fine — but they're available i
 A missing or invalid config is non-fatal: the server starts with **zero capabilities** and logs
 a warning/error rather than crashing.
 
+### Hot reload
+
+The orchestrator watches its config file and applies edits **at runtime — no restart needed**.
+On by default; opt out with `MCP_ORCHESTRATOR_NO_RELOAD=1`. One line at startup states whether
+reload is active, and each applied reload logs a diff summary (added / removed / restarted /
+updated in place / unchanged).
+
+- Edits are debounced (500 ms of quiet), and temp-file + atomic-rename writes are detected.
+- **Last-known-good:** if the edited file is malformed (bad JSON, an entry missing its name or
+  command, duplicate names), the reload is rejected with an error in the log and the running
+  config stays untouched — a typo never degrades the session.
+- Only *launch-relevant* changes (command, args, env values, workingDirectory, transport,
+  timeouts) restart a downstream — the old connection drains its in-flight calls, then the new
+  definition connects lazily on next use. Editing just `summary`/`instructions`/`enabled` updates
+  metadata in place without touching the running server. Removed entries are disposed after their
+  in-flight calls complete.
+- The agent notices nothing except an updated `list_capabilities` result: the three meta-tools
+  never change, so no `tools/list_changed` round-trip is involved.
+- Hot reload is inactive when the server started without a config file (there is nothing to
+  watch); creating the file still requires a restart.
+
 ### Setting environment variables (`MCP_ORCHESTRATOR_CONFIG` and the rest)
 
 All of the orchestrator's environment variables are read from the process the host launches, so the
