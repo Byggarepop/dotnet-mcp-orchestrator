@@ -1,3 +1,4 @@
+using System.Reflection;
 using System.Text;
 using System.Text.Encodings.Web;
 using System.Text.Json;
@@ -25,6 +26,28 @@ public static class InitCommand
 {
     /// <summary>The pinned, never-published version pack-local.ps1 uses for the local dev feed (--dev-feed).</summary>
     private const string DevVersion = "9.9.9-dev";
+
+    /// <summary>
+    /// The default (no --command, no --dev-feed) launch: run the tool from nuget.org via
+    /// <c>dotnet tool execute</c>, pinned to the version of the tool running <em>right now</em> —
+    /// deterministic, already in the local NuGet cache (this very process came from it), and
+    /// therefore offline-safe. Unpinned would re-resolve "latest" on host starts instead.
+    /// </summary>
+    private static string[] DefaultExecuteArgs()
+    {
+        var version = typeof(InitCommand).Assembly
+            .GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion;
+        // Strip SourceLink build metadata ("0.2.3+abc123" → "0.2.3").
+        var plus = version?.IndexOf('+') ?? -1;
+        if (plus >= 0)
+        {
+            version = version![..plus];
+        }
+
+        return string.IsNullOrWhiteSpace(version)
+            ? new[] { "tool", "execute", "McpOrchestrator", "--yes" }
+            : new[] { "tool", "execute", "McpOrchestrator", "--version", version, "--yes" };
+    }
 
     /// <summary>Entry point for the subcommand. <paramref name="args"/> excludes the leading "init".</summary>
     public static async Task<int> RunAsync(string[] args)
@@ -135,6 +158,18 @@ public static class InitCommand
 
         var hostText = File.ReadAllText(hostPath);
 
+        // How the host should launch the orchestrator, most specific wins:
+        //  --dev-feed  : run from a local folder feed (same pattern as pack-local.ps1).
+        //  --command   : an explicit command — the globally installed tool or the AOT binary.
+        //  default     : `dotnet tool execute` from nuget.org, pinned to the version running now,
+        //                so nothing needs to be installed and the entry stays offline-safe
+        //                (the pinned version is already in the local NuGet cache).
+        var (orchestratorCommand, orchestratorArgs) = parsed.DevFeed is not null
+            ? ("dotnet", new[] { "tool", "execute", "McpOrchestrator", "--version", DevVersion, "--source", Path.GetFullPath(parsed.DevFeed), "--yes" })
+            : parsed.OrchestratorCommand is not null
+                ? (parsed.OrchestratorCommand, Array.Empty<string>())
+                : ("dotnet", DefaultExecuteArgs());
+
         // Unless opted out, connect to each importable server once and derive its summary from
         // what the server itself declares (instructions, then tool names). A server that won't
         // start just keeps its TODO placeholder — probing never fails the init.
@@ -158,13 +193,6 @@ public static class InitCommand
                 summaries = await SummaryGenerator.GenerateAsync(toProbe, CancellationToken.None);
             }
         }
-
-        // How the host should launch the orchestrator. Default: the `mcp-orchestrator` command on
-        // PATH. With --dev-feed, run the tool straight from a local folder feed (same pattern as
-        // pack-local.ps1) so the host always picks up the latest local build.
-        var (orchestratorCommand, orchestratorArgs) = parsed.DevFeed is not null
-            ? ("dotnet", new[] { "tool", "execute", "McpOrchestrator", "--version", DevVersion, "--source", Path.GetFullPath(parsed.DevFeed), "--yes" })
-            : (parsed.OrchestratorCommand, Array.Empty<string>());
 
         InitPlan plan;
         try
@@ -402,7 +430,8 @@ public static class InitCommand
     {
         public string? HostConfigPath { get; private init; }
         public string? OutPath { get; private init; }
-        public string OrchestratorCommand { get; private init; } = "mcp-orchestrator";
+        /// <summary>Explicit launch command from --command, or null for the install-free default.</summary>
+        public string? OrchestratorCommand { get; private init; }
         public string? DevFeed { get; private init; }
         public bool Force { get; private init; }
         public bool DryRun { get; private init; }
@@ -490,7 +519,7 @@ public static class InitCommand
             {
                 HostConfigPath = host,
                 OutPath = outPath,
-                OrchestratorCommand = command ?? "mcp-orchestrator",
+                OrchestratorCommand = command,
                 DevFeed = devFeed,
                 Force = force,
                 DryRun = dryRun,
@@ -544,9 +573,11 @@ public static class InitCommand
         OPTIONS
           --out <path>           Where to write the catalog. Default: orchestrator.config.json
                                  next to the host config.
-          --command <cmd>        Command the host should launch for the orchestrator.
-                                 Default: 'mcp-orchestrator' (the .NET tool on PATH). Use the
-                                 absolute path to the AOT binary instead if you installed that.
+          --command <cmd>        Command the host should launch for the orchestrator. Default:
+                                 install-free 'dotnet tool execute McpOrchestrator --version
+                                 <this version> --yes' (nuget.org, cached locally). Pass
+                                 'mcp-orchestrator' if you installed the tool globally, or the
+                                 absolute path to the AOT binary.
           --dev-feed <path>      Launch the orchestrator from a local folder feed instead, so the
                                  host always runs the latest local build (see pack-local.ps1):
                                  dotnet tool execute McpOrchestrator --version 9.9.9-dev

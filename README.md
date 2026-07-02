@@ -53,36 +53,22 @@ Remote (`http`/`sse`) servers can't be relayed and are skipped; everything else 
 
 ## Quick start
 
-Three steps from an existing MCP setup to running through the orchestrator.
+Two steps from an existing MCP setup to running through the orchestrator — **nothing to install** (needs the .NET SDK).
 
-### 1. Install
+### 1. Init
 
-The .NET tool (needs the **.NET SDK** — `dotnet tool` ships with the SDK, not the runtime) puts the `mcp-orchestrator` command on your PATH:
-
-```bash
-dotnet tool install --global McpOrchestrator
-```
-
-> No .NET SDK? Download the self-contained Native-AOT binary from [GitHub Releases](https://github.com/Byggarepop/dotnet-mcp-orchestrator/releases), unzip it, and use the absolute path to the binary as the command (pass it to `init` below with `--command <path>`). It needs no .NET at all.
-
-### 2. Init
-
-`cd` into a folder that holds your MCP host config and run `init` with no path — it auto-detects the first of `.mcp.json`, `.vscode/mcp.json`, `.cursor/mcp.json`, `mcp.json`:
+`cd` into a folder that holds your MCP host config — `.mcp.json` (Claude Code, Visual Studio), `.vscode/mcp.json` (VS Code), or a Cursor config — and run `init`; it auto-detects the config (or pass a path explicitly):
 
 ```bash
 cd ~/my-project
-mcp-orchestrator init
+dotnet tool execute McpOrchestrator --yes init      # dnx McpOrchestrator --yes init  works too
 ```
 
-Or point it at a specific config — `.mcp.json` (Claude Code, Visual Studio), `.vscode/mcp.json` (VS Code), or a Cursor / Claude Desktop config:
+It lifts every stdio server into a generated `orchestrator.config.json` (one capability each), backs up the original to `.bak`, then rewrites it to launch **only** the orchestrator — pointed at the new catalog via `MCP_ORCHESTRATOR_CONFIG` and launched the same install-free way. Along the way it connects to each server once and auto-generates its one-line `summary` from what the server declares about itself — no LLM, fully offline. Remote (http/sse) servers can't be relayed over stdio, so they're left in place untouched. (`--dry-run` previews everything; `--no-summarize` skips the server connections.)
 
-```bash
-mcp-orchestrator init path/to/.mcp.json
-```
+> No .NET SDK? Download the self-contained Native-AOT binary from [GitHub Releases](https://github.com/Byggarepop/dotnet-mcp-orchestrator/releases), unzip it, and pass the binary's absolute path to `init` with `--command <path>`. It needs no .NET at all.
 
-It lifts every stdio server into a generated `orchestrator.config.json` (one capability each), backs up the original to `.bak`, then rewrites it to launch **only** the orchestrator — pointed at the new catalog via `MCP_ORCHESTRATOR_CONFIG`. Along the way it connects to each server once and auto-generates its one-line `summary` from what the server declares about itself (its `initialize` instructions, else its tool names) — no LLM, fully offline. Remote (http/sse) servers can't be relayed over stdio, so they're left in place untouched. (Add `--dry-run` to preview both files first; add `--no-summarize` to skip the server connections and keep `TODO` placeholders instead.)
-
-### 3. Review the summaries (optional)
+### 2. Review the summaries (optional)
 
 Open the generated `orchestrator.config.json` and review the auto-generated summaries — each is marked with a trailing `// auto-generated` comment — and refine any that look off; that line is what the agent reads to route. A server that failed to start keeps a `TODO` placeholder to fill in by hand. Then restart your MCP host so it picks up the orchestrator entry.
 

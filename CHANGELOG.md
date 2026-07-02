@@ -9,6 +9,13 @@ uses it as the GitHub Release notes — so keep an entry per released version.
 
 ## [Unreleased]
 
+### Changed
+- `init` now writes an install-free host entry by default: the orchestrator is launched via
+  `dotnet tool execute McpOrchestrator --version <the version init ran as> --yes` (resolved from
+  the local NuGet cache — no global install needed, nothing to go stale). `--command` still
+  overrides it (e.g. a globally installed `mcp-orchestrator` or the AOT binary path), and
+  `--dev-feed` is unchanged. The quick start is now two steps with no install step.
+
 ### Added
 - Centrally managed config: set `MCP_ORCHESTRATOR_CONFIG_URL` to serve the catalog from an HTTPS
   URL (team scenario — one shared catalog, updated in one place, picked up automatically). Source
