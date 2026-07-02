@@ -20,6 +20,14 @@ uses it as the GitHub Release notes — so keep an entry per released version.
   `.cursor/mcp.json`, `mcp.json` that exists (the generated `orchestrator.config.json` is init's
   output, so it's never auto-detected as input). So `cd` into a project and run `mcp-orchestrator
   init`.
+- `init` now auto-generates each capability's `summary` instead of writing a `TODO` placeholder:
+  it connects to each stdio server once (same connection mechanics as `profile`, including the
+  connect timeout) and derives the summary from the server's `initialize` `instructions` (first
+  sentence, ≤150 chars) or, failing that, its tool names (`"{N} tools for {server}: …"`).
+  Deterministic and offline — no LLM. Auto-generated lines are marked with a trailing
+  `// auto-generated` comment; a server that fails to start silently keeps the `TODO` placeholder.
+  A new `--no-summarize` flag skips the connections entirely for servers that are slow or
+  side-effectful to start.
 
 ## [0.2.3] - 2026-06-25
 

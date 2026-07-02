@@ -229,7 +229,8 @@ public sealed class InitCommandTests
         var (code, _, stderr) = await InTempDir(async dir =>
         {
             await File.WriteAllTextAsync(Path.Combine(dir, ".mcp.json"), ClaudeStyle);
-            return await Run("--dry-run");
+            // --no-summarize: this test is about discovery, not about connecting to the (fake) servers.
+            return await Run("--dry-run", "--no-summarize");
         });
 
         // Discovery announced the file on stderr, and init ran (dry-run → exit 0, wrote nothing).
@@ -295,7 +296,8 @@ public sealed class InitCommandTests
         await File.WriteAllTextAsync(hostPath, ClaudeStyle);
         try
         {
-            var (code, _, _) = await Run(hostPath);
+            // --no-summarize: ClaudeStyle's servers aren't launchable; this covers the file plumbing.
+            var (code, _, _) = await Run(hostPath, "--no-summarize");
             Assert.Equal(0, code);
 
             var catalogPath = Path.Combine(dir, "orchestrator.config.json");
@@ -307,6 +309,101 @@ public sealed class InitCommandTests
 
             var orch = JsonNode.Parse(await File.ReadAllTextAsync(hostPath))!["mcpServers"]!["orchestrator"]!.AsObject();
             Assert.Equal(catalogPath, orch["env"]!["MCP_ORCHESTRATOR_CONFIG"]!.GetValue<string>());
+        }
+        finally
+        {
+            Directory.Delete(dir, recursive: true);
+        }
+    }
+
+    // --- auto-generated summaries (against the real demo downstream) ---
+
+    /// <summary>A host config launching the built demo server (jira persona) plus one unlaunchable server.</summary>
+    private static string DemoAndBrokenHostConfig()
+    {
+        var demo = Demo.DemoDll.Replace('\\', '/');
+        return $$"""
+        {
+          "mcpServers": {
+            "demo":   { "command": "dotnet", "args": ["{{demo}}", "--persona", "jira"] },
+            "broken": { "command": "this-command-does-not-exist-xyz" }
+          }
+        }
+        """;
+    }
+
+    [Fact]
+    [Trait("Category", "Integration")]
+    public async Task Init_auto_generates_summaries_and_keeps_todo_for_a_server_that_wont_start()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), $"init-test-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(dir);
+        var hostPath = Path.Combine(dir, ".mcp.json");
+        await File.WriteAllTextAsync(hostPath, DemoAndBrokenHostConfig());
+        try
+        {
+            var (code, _, _) = await Run(hostPath);
+            Assert.Equal(0, code);
+
+            var text = await File.ReadAllTextAsync(Path.Combine(dir, "orchestrator.config.json"));
+            var catalog = ParseCatalog(text);
+
+            // The demo server has no initialize instructions, so its summary comes from the
+            // tool-name template — and its line carries the auto-generated marker.
+            var demo = catalog.Capabilities.Single(c => c.Name == "demo");
+            Assert.StartsWith("2 tools for ", demo.Summary);
+            Assert.Contains("get_issue", demo.Summary);
+            Assert.Contains("search_issues", demo.Summary);
+            var demoLine = text.Split('\n').Single(l => l.Contains("get_issue"));
+            Assert.Contains(InitCommand.AutoSummaryComment, demoLine);
+
+            // The unlaunchable server silently keeps the TODO placeholder, unmarked.
+            var broken = catalog.Capabilities.Single(c => c.Name == "broken");
+            Assert.Contains("TODO", broken.Summary);
+            var brokenLine = text.Split('\n').Single(l => l.Contains("TODO"));
+            Assert.DoesNotContain("auto-generated", brokenLine);
+        }
+        finally
+        {
+            Directory.Delete(dir, recursive: true);
+        }
+    }
+
+    [Fact]
+    [Trait("Category", "Integration")]
+    public async Task Dry_run_previews_auto_generated_summaries_without_writing()
+    {
+        var (code, stdout, catalogWritten) = await InTempDir(async dir =>
+        {
+            var hostPath = Path.Combine(dir, ".mcp.json");
+            await File.WriteAllTextAsync(hostPath, DemoAndBrokenHostConfig());
+            var (c, o, _) = await Run(hostPath, "--dry-run");
+            return (c, o, File.Exists(Path.Combine(dir, "orchestrator.config.json")));
+        });
+
+        Assert.Equal(0, code);
+        Assert.False(catalogWritten);
+        Assert.Contains("get_issue", stdout);
+        Assert.Contains(InitCommand.AutoSummaryComment, stdout);
+    }
+
+    [Fact]
+    public async Task No_summarize_keeps_todo_placeholders_and_attempts_no_connections()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), $"init-test-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(dir);
+        var hostPath = Path.Combine(dir, ".mcp.json");
+        await File.WriteAllTextAsync(hostPath, DemoAndBrokenHostConfig());
+        try
+        {
+            var (code, _, stderr) = await Run(hostPath, "--no-summarize");
+            Assert.Equal(0, code);
+            Assert.DoesNotContain("Connecting to", stderr);
+
+            var text = await File.ReadAllTextAsync(Path.Combine(dir, "orchestrator.config.json"));
+            var catalog = ParseCatalog(text);
+            Assert.All(catalog.Capabilities, c => Assert.Contains("TODO", c.Summary));
+            Assert.DoesNotContain("auto-generated", text);
         }
         finally
         {
