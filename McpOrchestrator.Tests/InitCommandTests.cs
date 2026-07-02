@@ -444,6 +444,33 @@ public sealed class InitCommandTests
     }
 
     [Fact]
+    public async Task Default_host_entry_launches_install_free_via_dotnet_tool_execute()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), $"init-test-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(dir);
+        var hostPath = Path.Combine(dir, ".mcp.json");
+        await File.WriteAllTextAsync(hostPath, ClaudeStyle);
+        try
+        {
+            var (code, _, _) = await Run(hostPath, "--no-summarize");
+            Assert.Equal(0, code);
+
+            // No --command / --dev-feed: the entry must not depend on a globally installed tool.
+            var orch = JsonNode.Parse(await File.ReadAllTextAsync(hostPath))!["mcpServers"]!["orchestrator"]!.AsObject();
+            Assert.Equal("dotnet", orch["command"]!.GetValue<string>());
+            var args = orch["args"]!.AsArray().Select(a => a!.GetValue<string>()).ToArray();
+            Assert.Equal(new[] { "tool", "execute", "McpOrchestrator" }, args.Take(3));
+            Assert.Equal("--yes", args[^1]);
+            // Pinned to the running version, so host startup resolves from the local cache.
+            Assert.Contains("--version", args);
+        }
+        finally
+        {
+            Directory.Delete(dir, recursive: true);
+        }
+    }
+
+    [Fact]
     public async Task Existing_catalog_without_force_is_an_error()
     {
         var dir = Path.Combine(Path.GetTempPath(), $"init-test-{Guid.NewGuid():N}");
