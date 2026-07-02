@@ -74,7 +74,7 @@ Open the generated `orchestrator.config.json` and review the auto-generated summ
 
 That's it. The agent now sees three meta-tools and the flow is `list_capabilities` → `discover_tools("…")` → `route("…", "<tool>", { … })`. And from here on you can edit `orchestrator.config.json` at any time — the running orchestrator [hot-reloads it](https://github.com/Byggarepop/dotnet-mcp-orchestrator/blob/main/McpOrchestrator/README.md#hot-reload), no restart needed.
 
-> Team setup? Serve one shared catalog from an HTTPS URL via `MCP_ORCHESTRATOR_CONFIG_URL` — every developer picks up changes automatically within the poll interval. See [Central configuration](https://github.com/Byggarepop/dotnet-mcp-orchestrator/blob/main/McpOrchestrator/README.md#central-configuration); bootstrap the shared file with `init --print-central`.
+> Team setup? Serve one shared configuration from an HTTPS URL — every developer joins with `init --central-url <url>` and picks up changes automatically, no restart. Bootstrap the shared file with `init --print-central`. See [Central configuration](https://github.com/Byggarepop/dotnet-mcp-orchestrator/blob/main/McpOrchestrator/README.md#central-configuration).
 
 > Starting from scratch with no MCP config yet? See [Manual setup](#manual-setup) for the two files `init` would otherwise generate. Logs are mirrored to `~/.mcpOrchestrator/orchestrator.log`.
 

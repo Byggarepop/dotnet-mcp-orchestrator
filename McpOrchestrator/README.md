@@ -763,8 +763,14 @@ a central one, run `mcp-orchestrator init <host-config> --print-central` — it 
 generated catalog to stdout (no file writes, no host-config rewrite), ready to pipe into whatever
 serves the URL.
 
-**Joining the shared catalog (each developer).** `mcp-orchestrator init --central-url <url>`
-rewrites your host config so the orchestrator reads its catalog from the URL: the orchestrator
+**Joining the shared catalog (each developer).** One command, nothing installed — `cd` into the
+project with your host config and run:
+
+```bash
+dotnet tool execute McpOrchestrator --yes init --central-url <url>    # dnx works too
+```
+
+It rewrites your host config so the orchestrator reads its catalog from the URL: the orchestrator
 entry gets `MCP_ORCHESTRATOR_CONFIG_URL` in its env block, no local catalog is written, and no
 servers are contacted. Existing stdio servers are lifted out of the host config as usual (the
 central catalog is assumed to cover them — the command lists what it removed so you can check).
@@ -773,12 +779,10 @@ init deliberately never writes credentials into the host config, which often end
 
 **Try it now.** A ready-made central catalog is committed at
 [`docs/orchestrator.central.example.json`](https://github.com/Byggarepop/dotnet-mcp-orchestrator/blob/main/docs/orchestrator.central.example.json)
-(npx-based servers, works on any machine with Node.js). Point the orchestrator at GitHub's copy:
+(npx-based servers, works on any machine with Node.js). Join GitHub's copy of it in one line:
 
-```json
-"env": {
-  "MCP_ORCHESTRATOR_CONFIG_URL": "https://raw.githubusercontent.com/Byggarepop/dotnet-mcp-orchestrator/main/docs/orchestrator.central.example.json"
-}
+```bash
+dotnet tool execute McpOrchestrator --yes init --central-url https://raw.githubusercontent.com/Byggarepop/dotnet-mcp-orchestrator/main/docs/orchestrator.central.example.json
 ```
 
 ### Setting environment variables (`MCP_ORCHESTRATOR_CONFIG` and the rest)
