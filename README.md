@@ -55,7 +55,7 @@ Remote (`http`/`sse`) servers can't be relayed and are skipped; everything else 
 
 Three steps from an existing MCP setup to running through the orchestrator.
 
-### 1. Install
+### 1. Install (or don't)
 
 The .NET tool (needs the **.NET SDK** — `dotnet tool` ships with the SDK, not the runtime) puts the `mcp-orchestrator` command on your PATH:
 
@@ -63,7 +63,17 @@ The .NET tool (needs the **.NET SDK** — `dotnet tool` ships with the SDK, not 
 dotnet tool install --global McpOrchestrator
 ```
 
+One-shot commands (`init`, `profile`) also run install-free straight from nuget.org — nothing to install, nothing to go stale:
+
+```bash
+dotnet tool execute McpOrchestrator --yes init     # dnx McpOrchestrator --yes init  works too
+```
+
+For the long-running server entry itself, the installed `mcp-orchestrator` command (or the AOT binary) is what `init` wires into your host config by default.
+
 > No .NET SDK? Download the self-contained Native-AOT binary from [GitHub Releases](https://github.com/Byggarepop/dotnet-mcp-orchestrator/releases), unzip it, and use the absolute path to the binary as the command (pass it to `init` below with `--command <path>`). It needs no .NET at all.
+
+> **Running a local dev build?** Never `tool install` the `9.9.9-dev` package — its version never changes, so the installed copy silently goes stale after the next `pack-local.ps1`. Use the execute-from-feed entry that `init --dev-feed` writes (see the note at the end of this section).
 
 ### 2. Init
 
