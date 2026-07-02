@@ -14,15 +14,6 @@
       "connectTimeoutSeconds": 120
     },
     {
-      "name": "everything",
-      "summary": "MCP reference server with demo tools (echo, add, longRunningOperation, sampling and more) — a safe playground to route to.",
-      "enabled": true,
-      "transport": "stdio",
-      "command": "npx",
-      "args": ["-y", "@modelcontextprotocol/server-everything"],
-      "connectTimeoutSeconds": 120
-    },
-    {
       "name": "files",
       "//": "${USERPROFILE} resolves on each consuming machine (Windows). On macOS/Linux, change it to ${HOME}.",
       "summary": "Read and inspect files under the user's home directory (list, read, search).",
