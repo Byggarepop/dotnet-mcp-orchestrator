@@ -7,7 +7,7 @@ All notable changes to this project are documented here. The format is based on
 The release workflow reads the section matching the tag (e.g. `## [0.1.0]` for tag `v0.1.0`) and
 uses it as the GitHub Release notes — so keep an entry per released version.
 
-## [Unreleased]
+## [0.3.0] - 2026-07-02
 
 ### Changed
 - `init` now writes an install-free host entry by default: the orchestrator is launched via
