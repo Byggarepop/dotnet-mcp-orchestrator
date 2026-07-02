@@ -14,7 +14,7 @@ namespace McpOrchestrator.Orchestration.Reload;
 /// </summary>
 internal sealed class ConfigReloader
 {
-    private readonly string _configPath;
+    private readonly IConfigSource _source;
     private readonly CapabilityRegistry _registry;
     private readonly IDownstreamConnectionLifecycle _connections;
     private readonly ILogger _logger;
@@ -28,12 +28,12 @@ internal sealed class ConfigReloader
     private IReadOnlyList<CapabilityDescriptor> _lastEntries;
 
     public ConfigReloader(
-        string configPath,
+        IConfigSource source,
         CapabilityRegistry registry,
         IDownstreamConnectionLifecycle connections,
         ILogger logger)
     {
-        _configPath = configPath;
+        _source = source;
         _registry = registry;
         _connections = connections;
         _logger = logger;
@@ -41,7 +41,7 @@ internal sealed class ConfigReloader
     }
 
     /// <summary>
-    /// Runs one full reload cycle: load + validate the config file, then diff + apply. Returns the
+    /// Runs one full reload cycle: load + validate from the source, then diff + apply. Returns the
     /// applied diff, or <c>null</c> when the new config was rejected and the running one was kept.
     /// Never throws — a reload failure must never take the server down.
     /// </summary>
@@ -49,7 +49,7 @@ internal sealed class ConfigReloader
     {
         try
         {
-            var loaded = CapabilityCatalog.TryLoadForReload(_configPath, _logger);
+            var loaded = await _source.TryLoadAsync(cancellationToken);
             if (loaded is null)
             {
                 return null; // Rejection already logged; last-known-good stays live.
@@ -88,9 +88,9 @@ internal sealed class ConfigReloader
             }
 
             _logger.LogInformation(
-                "Config reloaded from {ConfigPath}: {Added} added, {Removed} removed, {Restarted} restarted, "
+                "Config reloaded from {Source}: {Added} added, {Removed} removed, {Restarted} restarted, "
                 + "{MetadataUpdated} updated in place, {Unchanged} unchanged.",
-                _configPath, diff.Added.Count, diff.Removed.Count, diff.Restarted.Count,
+                _source.Description, diff.Added.Count, diff.Removed.Count, diff.Restarted.Count,
                 diff.MetadataUpdated.Count, diff.Unchanged);
 
             return diff;

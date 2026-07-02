@@ -141,7 +141,7 @@ public sealed class ConfigReloaderTests
     {
         await InTempConfigAsync(async (configPath, registry, spy, log) =>
         {
-            var reloader = new ConfigReloader(configPath, registry, spy, log);
+            var reloader = new ConfigReloader(new FileConfigSource(configPath, log), registry, spy, log);
             await File.WriteAllTextAsync(configPath, "{ this is not json !!");
 
             var diff = await reloader.ReloadAsync(CancellationToken.None);
@@ -158,7 +158,7 @@ public sealed class ConfigReloaderTests
     {
         await InTempConfigAsync(async (configPath, registry, spy, log) =>
         {
-            var reloader = new ConfigReloader(configPath, registry, spy, log);
+            var reloader = new ConfigReloader(new FileConfigSource(configPath, log), registry, spy, log);
             await File.WriteAllTextAsync(configPath, """
                 {
                   "capabilities": [
@@ -181,7 +181,7 @@ public sealed class ConfigReloaderTests
     {
         await InTempConfigAsync(async (configPath, registry, spy, log) =>
         {
-            var reloader = new ConfigReloader(configPath, registry, spy, log);
+            var reloader = new ConfigReloader(new FileConfigSource(configPath, log), registry, spy, log);
             await File.WriteAllTextAsync(configPath, """
                 { "capabilities": [ { "name": "broken", "summary": "no command" } ] }
                 """);
@@ -214,7 +214,8 @@ public sealed class ConfigReloaderTests
     {
         var registry = new CapabilityRegistry(CapabilityCatalog.FromDescriptors(initial, NullLogger.Instance));
         var spy = new SpyLifecycle();
-        var reloader = new ConfigReloader("unused.json", registry, spy, NullLogger.Instance);
+        var reloader = new ConfigReloader(
+            new FileConfigSource("unused.json", NullLogger.Instance), registry, spy, NullLogger.Instance);
         return (reloader, registry, spy);
     }
 
@@ -240,40 +241,4 @@ public sealed class ConfigReloaderTests
         }
     }
 
-    private sealed class SpyLifecycle : IDownstreamConnectionLifecycle
-    {
-        private readonly List<string> _invalidated = new();
-
-        public IReadOnlyList<string> Invalidated
-        {
-            get { lock (_invalidated) { return _invalidated.ToArray(); } }
-        }
-
-        public Task InvalidateAsync(string capability, CancellationToken cancellationToken)
-        {
-            lock (_invalidated)
-            {
-                _invalidated.Add(capability);
-            }
-            return Task.CompletedTask;
-        }
-    }
-
-    private sealed class CollectingLogger : ILogger
-    {
-        public List<(LogLevel Level, string Message)> Entries { get; } = new();
-
-        public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
-        public bool IsEnabled(LogLevel logLevel) => true;
-
-        public void Log<TState>(
-            LogLevel logLevel, EventId eventId, TState state, Exception? exception,
-            Func<TState, Exception?, string> formatter)
-        {
-            lock (Entries)
-            {
-                Entries.Add((logLevel, formatter(state, exception)));
-            }
-        }
-    }
 }

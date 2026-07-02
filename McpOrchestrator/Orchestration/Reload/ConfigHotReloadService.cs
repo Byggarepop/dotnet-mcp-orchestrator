@@ -46,7 +46,7 @@ internal sealed class ConfigHotReloadService : IHostedService, IDisposable
             return Task.CompletedTask;
         }
 
-        var reloader = new ConfigReloader(configPath, _registry, _connections, _logger);
+        var reloader = new ConfigReloader(new FileConfigSource(configPath, _logger), _registry, _connections, _logger);
         _trigger = new ConfigFileWatchTrigger(configPath);
         _trigger.Start(() => reloader.ReloadAsync(CancellationToken.None));
 

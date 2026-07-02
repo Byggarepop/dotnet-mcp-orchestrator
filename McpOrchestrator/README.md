@@ -686,6 +686,9 @@ need any of these — plain absolute paths work fine — but they're available i
 
 **Config location** is resolved in this order, first hit wins:
 
+0. `MCP_ORCHESTRATOR_CONFIG_URL` environment variable — **central mode**: the catalog is fetched
+   from that URL and every file path below is ignored entirely (see
+   [Central configuration](#central-configuration)), then
 1. `MCP_ORCHESTRATOR_CONFIG` environment variable (an explicit file path), then
 2. `<solutionDir>/McpOrchestrator/orchestrator.config.json` (if you create one there), then
 3. `orchestrator.config.json` next to the built assembly (the shipped template), then
@@ -719,6 +722,44 @@ updated in place / unchanged).
   never change, so no `tools/list_changed` round-trip is involved.
 - Hot reload is inactive when the server started without a config file (there is nothing to
   watch); creating the file still requires a restart.
+
+### Central configuration
+
+For a team/org, serve **one shared catalog from an HTTPS URL** — update it in one place and every
+developer's orchestrator picks it up automatically (polling + the same hot-reload pipeline, no
+restart). Any static file host works: a GitHub raw URL, blob storage, an internal web server.
+
+| Variable | Meaning |
+| --- | --- |
+| `MCP_ORCHESTRATOR_CONFIG_URL` | Turns central mode on: HTTP GET this URL for the catalog. HTTPS required (plain http allowed only for localhost). |
+| `MCP_ORCHESTRATOR_CONFIG_AUTH` | Optional. Sent verbatim as the `Authorization` header (e.g. `Bearer eyJ…`). Never written to logs. |
+| `MCP_ORCHESTRATOR_CONFIG_POLL_SECONDS` | Poll interval. Default 300, minimum 10; ±10% jitter so a fleet doesn't poll in lockstep. |
+
+**Source selection is binary — never merged.** URL set → central mode, and the local
+`MCP_ORCHESTRATOR_CONFIG` path is ignored entirely (a startup warning names the ignored path).
+URL unset → local file mode, exactly as before.
+
+**Efficient polling.** Fetches are conditional (`ETag`/`If-None-Match`, falling back to
+`Last-Modified`): an unchanged config costs a 304 and skips the reload pipeline entirely. Poll
+failures keep the running config (last-known-good), log the error — 401/403 get a distinct,
+actionable message — and back off exponentially (capped at 15 minutes) until the next success.
+
+**Offline / cache.** Every successful fetch is stored atomically in
+`~/.mcpOrchestrator/central-config-cache.json` (with URL + ETag + timestamp in a sidecar). If the
+URL is unreachable at startup, the orchestrator runs from the cached copy — but only when it was
+fetched from the *same* URL — and logs the cache's timestamp. No usable cache → startup fails with
+a clear error; it never silently falls back to a local config file.
+
+**Secrets stay local.** `${ENV_VAR}` placeholders resolve on each consuming machine — that is the
+supported way to keep tokens and machine-specific paths out of the shared catalog.
+`${CONFIG_DIR}` and `${SOLUTION_DIR}` are machine-local and therefore **invalid** in a centrally
+served config; validation rejects them with a message suggesting `${ENV_VAR}` or absolute paths.
+Payloads over 1 MB and HTML responses (a login page instead of the raw file) are rejected too.
+
+**Authoring the shared catalog.** `init` keeps generating local setups; to bootstrap a central
+one, run `mcp-orchestrator init <host-config> --print-central` — it prints only the generated
+catalog to stdout (no file writes, no host-config rewrite), ready to pipe into whatever serves
+the URL.
 
 ### Setting environment variables (`MCP_ORCHESTRATOR_CONFIG` and the rest)
 

@@ -20,7 +20,8 @@ public sealed class HotReloadIntegrationTests
             CapabilityCatalog.FromDescriptors(new[] { Demo.Capability("diag", "diag") }, NullLogger.Instance));
         await using var connections = new DownstreamConnectionManager(
             registry, NullLoggerFactory.Instance, new NullLogger<DownstreamConnectionManager>());
-        var reloader = new ConfigReloader("unused.json", registry, connections, NullLogger.Instance);
+        var reloader = new ConfigReloader(
+            new FileConfigSource("unused.json", NullLogger.Instance), registry, connections, NullLogger.Instance);
 
         // Warm the connection, then park a slow call in flight.
         await connections.CallToolAsync(
@@ -66,7 +67,8 @@ public sealed class HotReloadIntegrationTests
             var registry = new CapabilityRegistry(loaded!.Catalog);
             await using var connections = new DownstreamConnectionManager(
                 registry, NullLoggerFactory.Instance, new NullLogger<DownstreamConnectionManager>());
-            var reloader = new ConfigReloader(configPath, registry, connections, NullLogger.Instance);
+            var reloader = new ConfigReloader(
+                new FileConfigSource(configPath, NullLogger.Instance), registry, connections, NullLogger.Instance);
             using var trigger = new ConfigFileWatchTrigger(configPath, TimeSpan.FromMilliseconds(150));
             trigger.Start(() => reloader.ReloadAsync(CancellationToken.None));
 

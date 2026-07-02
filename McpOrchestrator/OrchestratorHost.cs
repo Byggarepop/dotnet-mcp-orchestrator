@@ -58,19 +58,47 @@ public static class OrchestratorHost
         //  - IDownstreamConnectionManager: connects to / proxies calls to those MCPs (MCP client).
         //    Also registered as IDownstreamConnectionLifecycle so the reload pipeline can retire
         //    connections of removed/changed capabilities.
+        // Source selection is binary: MCP_ORCHESTRATOR_CONFIG_URL set → centrally managed config
+        // (the local file path is ignored entirely); unset → local file mode, exactly as before.
+        // Central and local configs are never merged.
+        Orchestration.Reload.CentralConfigOptions? centralConfig;
+        try
+        {
+            centralConfig = Orchestration.Reload.CentralConfigOptions.FromEnvironment();
+        }
+        catch (ArgumentException ex)
+        {
+            Console.Error.WriteLine($"[McpOrchestrator] {ex.Message}");
+            return 1;
+        }
+
         var contentRoot = builder.Environment.ContentRootPath;
-        builder.Services.AddSingleton<CapabilityRegistry>(sp =>
-            new CapabilityRegistry(CapabilityCatalog.Load(
+        builder.Services.AddSingleton<CapabilityRegistry>(sp => centralConfig is null
+            ? new CapabilityRegistry(CapabilityCatalog.Load(
                 contentRoot,
-                sp.GetRequiredService<ILoggerFactory>().CreateLogger<CapabilityCatalog>())));
+                sp.GetRequiredService<ILoggerFactory>().CreateLogger<CapabilityCatalog>()))
+            // Central mode: seeded empty; CentralConfigService fills it (fetch or cache) before
+            // the MCP server hosted service starts accepting the stdio session.
+            : new CapabilityRegistry(CapabilityCatalog.FromDescriptors(
+                Array.Empty<CapabilityDescriptor>(), Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance)));
         builder.Services.AddSingleton<ICapabilityCatalog>(sp => sp.GetRequiredService<CapabilityRegistry>());
         builder.Services.AddSingleton<DownstreamConnectionManager>();
         builder.Services.AddSingleton<IDownstreamConnectionManager>(sp => sp.GetRequiredService<DownstreamConnectionManager>());
         builder.Services.AddSingleton<IDownstreamConnectionLifecycle>(sp => sp.GetRequiredService<DownstreamConnectionManager>());
 
-        // Config hot reload (on by default; MCP_ORCHESTRATOR_NO_RELOAD=1 opts out): watches the
-        // config file and applies edits at runtime without restarting the host.
-        builder.Services.AddHostedService<Orchestration.Reload.ConfigHotReloadService>();
+        // Config reload trigger, one of the two (registered before AddMcpServer so its StartAsync
+        // — including central mode's initial fetch — completes before the MCP session opens):
+        //  - file mode: watch the config file (on by default; MCP_ORCHESTRATOR_NO_RELOAD=1 opts out).
+        //  - central mode: initial fetch (or cache fallback) + polling with ETag revalidation.
+        if (centralConfig is null)
+        {
+            builder.Services.AddHostedService<Orchestration.Reload.ConfigHotReloadService>();
+        }
+        else
+        {
+            builder.Services.AddSingleton(centralConfig);
+            builder.Services.AddHostedService<Orchestration.Reload.CentralConfigService>();
+        }
 
         // Optional session-trace side-channel (--trace-out <path> or MCP_ORCHESTRATOR_TRACE_OUT).
         // The connection manager picks this up by DI and records each discover/route so the run can
@@ -105,7 +133,18 @@ public static class OrchestratorHost
             _ = Task.Run(() => Update.SelfUpdater.CheckAndStageAsync(updateLogger, CancellationToken.None));
         }
 
-        await app.RunAsync();
+        try
+        {
+            await app.RunAsync();
+        }
+        catch (Exception ex)
+        {
+            // A hosted service refused to start (e.g. central config unreachable with no cache).
+            // The reason was already logged; restate it on stderr and exit non-zero.
+            Console.Error.WriteLine($"[McpOrchestrator] Fatal: {ex.Message}");
+            return 1;
+        }
+
         return 0;
     }
 
