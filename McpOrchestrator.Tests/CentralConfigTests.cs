@@ -362,6 +362,21 @@ public sealed class CentralConfigTests
         });
     }
 
+    [Fact]
+    public void Committed_central_example_passes_central_validation()
+    {
+        // docs/orchestrator.central.example.json is what the README tells people to point
+        // MCP_ORCHESTRATOR_CONFIG_URL at — it must always survive the central-policy load.
+        var path = Path.Combine(Demo.SolutionDir, "docs", "orchestrator.central.example.json");
+        var loaded = CapabilityCatalog.TryParseForReload(
+            File.ReadAllText(path), path,
+            builtinPlaceholders: new Dictionary<string, string>(),
+            forbidLocalPlaceholders: true, NullLogger.Instance);
+
+        Assert.NotNull(loaded);
+        Assert.Equal(new[] { "tokensaver", "files" }, loaded!.Catalog.Names);
+    }
+
     // ----- helpers ------------------------------------------------------------------------------------
 
     private static CentralConfigOptions Options(string url, string? auth = null, string? ignoredLocalPath = null) =>
