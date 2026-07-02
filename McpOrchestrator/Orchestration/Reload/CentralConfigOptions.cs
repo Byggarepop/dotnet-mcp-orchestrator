@@ -50,20 +50,7 @@ internal sealed class CentralConfigOptions
             return null;
         }
 
-        if (!Uri.TryCreate(rawUrl, UriKind.Absolute, out var url))
-        {
-            throw new ArgumentException($"{UrlVariable} is not a valid absolute URL: '{rawUrl}'.");
-        }
-
-        // HTTPS only — a shared catalog decides what processes every developer's machine launches.
-        // Plain http is allowed solely for loopback, so local testing needs no certificate.
-        var isHttps = string.Equals(url.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase);
-        var isLoopbackHttp = string.Equals(url.Scheme, Uri.UriSchemeHttp, StringComparison.OrdinalIgnoreCase) && url.IsLoopback;
-        if (!isHttps && !isLoopbackHttp)
-        {
-            throw new ArgumentException(
-                $"{UrlVariable} must use https (plain http is allowed only for localhost/127.0.0.1): '{rawUrl}'.");
-        }
+        var url = RequireHttps(rawUrl, UrlVariable);
 
         var pollInterval = TimeSpan.FromSeconds(DefaultPollSeconds);
         var rawSeconds = Environment.GetEnvironmentVariable(PollSecondsVariable);
@@ -85,5 +72,30 @@ internal sealed class CentralConfigOptions
             string.IsNullOrWhiteSpace(auth) ? null : auth,
             pollInterval,
             string.IsNullOrWhiteSpace(ignoredLocal) ? null : ignoredLocal);
+    }
+
+    /// <summary>
+    /// The one central-URL rule, shared by runtime startup and <c>init --central-url</c>:
+    /// HTTPS only — a shared catalog decides what processes every developer's machine launches.
+    /// Plain http is allowed solely for loopback, so local testing needs no certificate.
+    /// </summary>
+    /// <param name="what">What supplied the value, for the error message (env var name or CLI flag).</param>
+    /// <exception cref="ArgumentException">The value is not an absolute URL, or violates the scheme rule.</exception>
+    internal static Uri RequireHttps(string rawUrl, string what)
+    {
+        if (!Uri.TryCreate(rawUrl, UriKind.Absolute, out var url))
+        {
+            throw new ArgumentException($"{what} is not a valid absolute URL: '{rawUrl}'.");
+        }
+
+        var isHttps = string.Equals(url.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase);
+        var isLoopbackHttp = string.Equals(url.Scheme, Uri.UriSchemeHttp, StringComparison.OrdinalIgnoreCase) && url.IsLoopback;
+        if (!isHttps && !isLoopbackHttp)
+        {
+            throw new ArgumentException(
+                $"{what} must use https (plain http is allowed only for localhost/127.0.0.1): '{rawUrl}'.");
+        }
+
+        return url;
     }
 }

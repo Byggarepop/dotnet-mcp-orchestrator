@@ -49,6 +49,8 @@ the agent sends. The agent does all the thinking. The orchestrator is therefore 
 9. [Packaging — install as a .NET tool](#packaging-install-as-a-net-tool)
 10. [Add a new downstream MCP](#add-a-new-downstream-mcp)
 11. [Configuration reference](#configuration-reference)
+    - [Hot reload](#hot-reload)
+    - [Central configuration](#central-configuration)
 12. [Testing](#testing)
 13. [Troubleshooting & pitfalls](#troubleshooting--pitfalls)
 14. [Security](#security)
@@ -756,10 +758,18 @@ supported way to keep tokens and machine-specific paths out of the shared catalo
 served config; validation rejects them with a message suggesting `${ENV_VAR}` or absolute paths.
 Payloads over 1 MB and HTML responses (a login page instead of the raw file) are rejected too.
 
-**Authoring the shared catalog.** `init` keeps generating local setups; to bootstrap a central
-one, run `mcp-orchestrator init <host-config> --print-central` — it prints only the generated
-catalog to stdout (no file writes, no host-config rewrite), ready to pipe into whatever serves
-the URL.
+**Authoring the shared catalog (team lead).** `init` keeps generating local setups; to bootstrap
+a central one, run `mcp-orchestrator init <host-config> --print-central` — it prints only the
+generated catalog to stdout (no file writes, no host-config rewrite), ready to pipe into whatever
+serves the URL.
+
+**Joining the shared catalog (each developer).** `mcp-orchestrator init --central-url <url>`
+rewrites your host config so the orchestrator reads its catalog from the URL: the orchestrator
+entry gets `MCP_ORCHESTRATOR_CONFIG_URL` in its env block, no local catalog is written, and no
+servers are contacted. Existing stdio servers are lifted out of the host config as usual (the
+central catalog is assumed to cover them — the command lists what it removed so you can check).
+If the URL needs auth, set `MCP_ORCHESTRATOR_CONFIG_AUTH` as an OS-level environment variable;
+init deliberately never writes credentials into the host config, which often ends up committed.
 
 **Try it now.** A ready-made central catalog is committed at
 [`docs/orchestrator.central.example.json`](https://github.com/Byggarepop/dotnet-mcp-orchestrator/blob/main/docs/orchestrator.central.example.json)

@@ -471,6 +471,54 @@ public sealed class InitCommandTests
     }
 
     [Fact]
+    public async Task Central_url_wires_the_host_to_the_url_and_writes_no_catalog()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), $"init-test-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(dir);
+        var hostPath = Path.Combine(dir, ".mcp.json");
+        await File.WriteAllTextAsync(hostPath, ClaudeStyle);
+        try
+        {
+            var (code, stdout, stderr) = await Run(hostPath, "--central-url", "https://example.com/team.json");
+            Assert.Equal(0, code);
+
+            // No local catalog, no server connections — the catalog lives at the URL.
+            Assert.False(File.Exists(Path.Combine(dir, "orchestrator.config.json")));
+            Assert.DoesNotContain("Connecting to", stderr);
+            Assert.True(File.Exists(hostPath + ".bak"));
+
+            var servers = JsonNode.Parse(await File.ReadAllTextAsync(hostPath))!["mcpServers"]!.AsObject();
+            Assert.Equal(new[] { "orchestrator" }, servers.Select(s => s.Key)); // stdio servers lifted out
+            var env = servers["orchestrator"]!["env"]!.AsObject();
+            Assert.Equal("https://example.com/team.json", env["MCP_ORCHESTRATOR_CONFIG_URL"]!.GetValue<string>());
+            Assert.False(env.ContainsKey("MCP_ORCHESTRATOR_CONFIG"));
+
+            // The summary points at the auth env var instead of ever writing a credential.
+            Assert.Contains("MCP_ORCHESTRATOR_CONFIG_AUTH", stdout);
+        }
+        finally
+        {
+            Directory.Delete(dir, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task Central_url_requires_https()
+    {
+        var (code, _, stderr) = await Run("x.json", "--central-url", "http://example.com/team.json");
+        Assert.Equal(1, code);
+        Assert.Contains("https", stderr);
+    }
+
+    [Fact]
+    public async Task Central_url_and_print_central_together_is_an_error()
+    {
+        var (code, _, stderr) = await Run("x.json", "--central-url", "https://example.com/t.json", "--print-central");
+        Assert.Equal(1, code);
+        Assert.Contains("mutually exclusive", stderr);
+    }
+
+    [Fact]
     public async Task Existing_catalog_without_force_is_an_error()
     {
         var dir = Path.Combine(Path.GetTempPath(), $"init-test-{Guid.NewGuid():N}");
