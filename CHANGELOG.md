@@ -17,6 +17,12 @@ uses it as the GitHub Release notes — so keep an entry per released version.
   `--dev-feed` is unchanged. The quick start is now two steps with no install step.
 
 ### Added
+- `init --central-url <url>`: join a centrally served catalog — rewrites the host config so the
+  orchestrator entry carries `MCP_ORCHESTRATOR_CONFIG_URL` instead of a local config path. Writes
+  no catalog file and contacts no servers; stdio servers are lifted out of the host config as
+  usual and listed so the user can verify the central catalog covers them. The URL is validated
+  with the same HTTPS rule as the runtime, and credentials are never written to the host config
+  (the summary points at `MCP_ORCHESTRATOR_CONFIG_AUTH` instead).
 - Centrally managed config: set `MCP_ORCHESTRATOR_CONFIG_URL` to serve the catalog from an HTTPS
   URL (team scenario — one shared catalog, updated in one place, picked up automatically). Source
   selection is binary: the URL wins and the local `MCP_ORCHESTRATOR_CONFIG` path is ignored with a

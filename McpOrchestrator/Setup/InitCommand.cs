@@ -150,7 +150,7 @@ public static class InitCommand
         var hostDir = Path.GetDirectoryName(hostPath) ?? Directory.GetCurrentDirectory();
         var outPath = Path.GetFullPath(parsed.OutPath ?? Path.Combine(hostDir, "orchestrator.config.json"));
 
-        if (File.Exists(outPath) && !parsed.Force && !parsed.DryRun && !parsed.PrintCentral)
+        if (File.Exists(outPath) && !parsed.Force && !parsed.DryRun && !parsed.PrintCentral && parsed.CentralUrl is null)
         {
             throw new IOException(
                 $"'{outPath}' already exists. Re-run with --force to overwrite it, or pass --out <path> to write elsewhere.");
@@ -174,7 +174,7 @@ public static class InitCommand
         // what the server itself declares (instructions, then tool names). A server that won't
         // start just keeps its TODO placeholder — probing never fails the init.
         IReadOnlyDictionary<string, string>? summaries = null;
-        if (!parsed.NoSummarize)
+        if (!parsed.NoSummarize && parsed.CentralUrl is null)
         {
             IReadOnlyList<CapabilityDescriptor> toProbe;
             try
@@ -197,14 +197,16 @@ public static class InitCommand
         InitPlan plan;
         try
         {
-            plan = Plan(hostText, Path.GetFileName(hostPath), outPath, orchestratorCommand, orchestratorArgs, summaries);
+            plan = Plan(hostText, Path.GetFileName(hostPath), outPath, orchestratorCommand, orchestratorArgs, summaries, parsed.CentralUrl);
         }
         catch (JsonException ex)
         {
             throw new InvalidDataException($"could not parse '{hostPath}' as JSON: {ex.Message}", ex);
         }
 
-        if (plan.ImportedNames.Count == 0)
+        // Joining a central catalog is valid even when the host config has no stdio servers to
+        // lift — the point is only to add the orchestrator entry pointing at the URL.
+        if (plan.ImportedNames.Count == 0 && parsed.CentralUrl is null)
         {
             throw new InvalidDataException(
                 "no importable stdio servers found in the host config. " +
@@ -222,21 +224,29 @@ public static class InitCommand
         if (parsed.DryRun)
         {
             Console.Out.WriteLine($"# DRY RUN — nothing written.\n");
-            Console.Out.WriteLine($"# Would write {outPath}:");
-            Console.Out.WriteLine(plan.OrchestratorConfigText);
-            Console.Out.WriteLine($"\n# Would rewrite {hostPath} to:");
+            if (parsed.CentralUrl is null)
+            {
+                Console.Out.WriteLine($"# Would write {outPath}:");
+                Console.Out.WriteLine(plan.OrchestratorConfigText);
+                Console.Out.WriteLine();
+            }
+            Console.Out.WriteLine($"# Would rewrite {hostPath} to:");
             Console.Out.WriteLine(plan.NewHostConfigText);
-            WriteSummary(plan, outPath, hostPath, backupPath: null, dryRun: true);
+            WriteSummary(plan, outPath, hostPath, backupPath: null, dryRun: true, parsed.CentralUrl);
             return 0;
         }
 
         // Order matters: back up + write the new catalog before touching the host config, so a
-        // failure never leaves the host pointing at a file that does not exist.
-        File.WriteAllText(outPath, plan.OrchestratorConfigText);
+        // failure never leaves the host pointing at a file that does not exist. With --central-url
+        // there is no catalog file — the host points at the URL instead.
+        if (parsed.CentralUrl is null)
+        {
+            File.WriteAllText(outPath, plan.OrchestratorConfigText);
+        }
         var backupPath = BackUp(hostPath);
         File.WriteAllText(hostPath, plan.NewHostConfigText);
 
-        WriteSummary(plan, outPath, hostPath, backupPath, dryRun: false);
+        WriteSummary(plan, outPath, hostPath, backupPath, dryRun: false, parsed.CentralUrl);
         return 0;
     }
 
@@ -249,7 +259,8 @@ public static class InitCommand
     internal static InitPlan Plan(
         string hostConfigText, string sourceLabel, string outConfigPath,
         string orchestratorCommand, IReadOnlyList<string>? orchestratorArgs = null,
-        IReadOnlyDictionary<string, string>? summaries = null)
+        IReadOnlyDictionary<string, string>? summaries = null,
+        string? centralUrl = null)
     {
         // Classify every server (shared with `profile --host-config`); init then mutates the same DOM.
         var import = HostConfigImport.Parse(hostConfigText);
@@ -289,15 +300,20 @@ public static class InitCommand
             argsArray.Add((JsonNode)a);
         }
         orchestrator["args"] = argsArray;
+        // Consumer of a central catalog (--central-url): point the orchestrator at the URL and
+        // write no local catalog at all. Otherwise: the generated local file, as always.
         orchestrator["env"] = new JsonObject
         {
-            ["MCP_ORCHESTRATOR_CONFIG"] = outConfigPath,
+            [centralUrl is null ? "MCP_ORCHESTRATOR_CONFIG" : "MCP_ORCHESTRATOR_CONFIG_URL"] =
+                centralUrl ?? outConfigPath,
         };
         import.Container["orchestrator"] = orchestrator;
 
         var newHostText = import.Root.ToJsonString(new JsonSerializerOptions { WriteIndented = true });
 
-        var configText = BuildConfigText(import.Capabilities.ToList(), sourceLabel, autoSummarized);
+        var configText = centralUrl is null
+            ? BuildConfigText(import.Capabilities.ToList(), sourceLabel, autoSummarized)
+            : string.Empty;
 
         return new InitPlan(newHostText, configText, import.Imported, import.SkippedRemote, import.ContainerKey, autoSummarized);
     }
@@ -377,11 +393,18 @@ public static class InitCommand
         return backup;
     }
 
-    private static void WriteSummary(InitPlan plan, string outPath, string hostPath, string? backupPath, bool dryRun)
+    private static void WriteSummary(InitPlan plan, string outPath, string hostPath, string? backupPath, bool dryRun, string? centralUrl = null)
     {
         var w = Console.Out;
         w.WriteLine();
-        w.WriteLine($"Imported {plan.ImportedNames.Count} server(s) into the orchestrator catalog:");
+        if (centralUrl is null)
+        {
+            w.WriteLine($"Imported {plan.ImportedNames.Count} server(s) into the orchestrator catalog:");
+        }
+        else if (plan.ImportedNames.Count > 0)
+        {
+            w.WriteLine($"Removed {plan.ImportedNames.Count} stdio server(s) from the host config — make sure the central catalog covers them:");
+        }
         foreach (var name in plan.ImportedNames)
         {
             w.WriteLine($"  • {name}");
@@ -400,7 +423,14 @@ public static class InitCommand
         if (!dryRun)
         {
             w.WriteLine();
-            w.WriteLine($"Wrote catalog : {outPath}");
+            if (centralUrl is null)
+            {
+                w.WriteLine($"Wrote catalog : {outPath}");
+            }
+            else
+            {
+                w.WriteLine($"Central config: {centralUrl}");
+            }
             if (backupPath is not null)
             {
                 w.WriteLine($"Backed up host: {backupPath}");
@@ -410,10 +440,19 @@ public static class InitCommand
 
         w.WriteLine();
         w.WriteLine("Next:");
-        w.WriteLine(plan.AutoSummarized.Count > 0
-            ? $"  1. Review the auto-generated summaries in {Path.GetFileName(outPath)} and refine any that look off."
-            : $"  1. Open {Path.GetFileName(outPath)} and add a one-line \"summary\" for each capability.");
-        w.WriteLine("  2. Restart your MCP host so it picks up the orchestrator.");
+        if (centralUrl is not null)
+        {
+            w.WriteLine("  1. If the URL requires auth, set MCP_ORCHESTRATOR_CONFIG_AUTH as a user/machine");
+            w.WriteLine("     environment variable — never commit the credential to the host config.");
+            w.WriteLine("  2. Restart your MCP host so it picks up the orchestrator.");
+        }
+        else
+        {
+            w.WriteLine(plan.AutoSummarized.Count > 0
+                ? $"  1. Review the auto-generated summaries in {Path.GetFileName(outPath)} and refine any that look off."
+                : $"  1. Open {Path.GetFileName(outPath)} and add a one-line \"summary\" for each capability.");
+            w.WriteLine("  2. Restart your MCP host so it picks up the orchestrator.");
+        }
     }
 
     /// <summary>The result of <see cref="Plan"/>: the two file bodies plus what was imported/skipped/summarized.</summary>
@@ -437,6 +476,7 @@ public static class InitCommand
         public bool DryRun { get; private init; }
         public bool NoSummarize { get; private init; }
         public bool PrintCentral { get; private init; }
+        public string? CentralUrl { get; private init; }
         public bool ShowHelp { get; private init; }
 
         /// <summary>Returns a copy with the host config set to an auto-detected path. Used when no
@@ -451,12 +491,13 @@ public static class InitCommand
             DryRun = DryRun,
             NoSummarize = NoSummarize,
             PrintCentral = PrintCentral,
+            CentralUrl = CentralUrl,
             ShowHelp = ShowHelp,
         };
 
         public static ParsedArgs Parse(string[] args)
         {
-            string? host = null, outPath = null, command = null, devFeed = null;
+            string? host = null, outPath = null, command = null, devFeed = null, centralUrl = null;
             bool force = false, dryRun = false, noSummarize = false, printCentral = false, help = false;
 
             for (var i = 0; i < args.Length; i++)
@@ -484,6 +525,9 @@ public static class InitCommand
                         break;
                     case "--print-central":
                         printCentral = true;
+                        break;
+                    case "--central-url":
+                        centralUrl = inlineValue ?? Next(args, ref i, flag);
                         break;
                     case "-h":
                     case "--help":
@@ -515,6 +559,23 @@ public static class InitCommand
                 throw new ArgumentException("--print-central and --dry-run are mutually exclusive (each is its own print-only mode).");
             }
 
+            if (centralUrl is not null)
+            {
+                if (printCentral)
+                {
+                    throw new ArgumentException(
+                        "--central-url and --print-central are mutually exclusive: --print-central produces a central "
+                        + "catalog (team lead); --central-url consumes one (developer joining).");
+                }
+                if (outPath is not null)
+                {
+                    throw new ArgumentException("--out has no effect with --central-url (no catalog file is written).");
+                }
+
+                // Same rule as the runtime: fail a typo here, not at the host's first start.
+                Orchestration.Reload.CentralConfigOptions.RequireHttps(centralUrl, "--central-url");
+            }
+
             return new ParsedArgs
             {
                 HostConfigPath = host,
@@ -525,6 +586,7 @@ public static class InitCommand
                 DryRun = dryRun,
                 NoSummarize = noSummarize,
                 PrintCentral = printCentral,
+                CentralUrl = centralUrl,
                 ShowHelp = help,
             };
         }
@@ -588,6 +650,14 @@ public static class InitCommand
                                  (no host-config rewrite, no backup) — pipe it into whatever
                                  serves your team's central config URL
                                  (MCP_ORCHESTRATOR_CONFIG_URL).
+          --central-url <url>    Join a centrally served catalog: rewrite the host config so the
+                                 orchestrator reads its catalog from <url>
+                                 (MCP_ORCHESTRATOR_CONFIG_URL) instead of a local file. Writes no
+                                 catalog, connects to nothing; stdio servers are still lifted out
+                                 of the host config — the central catalog is assumed to cover
+                                 them. HTTPS required (plain http only for localhost). If the URL
+                                 needs auth, set MCP_ORCHESTRATOR_CONFIG_AUTH as an OS-level env
+                                 var — don't put credentials in the host config.
           --no-summarize         Don't connect to the servers to auto-generate summaries; keep
                                  the TODO placeholders instead. Use when a server is slow or
                                  side-effectful to start. A server that fails to start is skipped
