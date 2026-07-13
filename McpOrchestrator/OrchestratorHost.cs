@@ -100,6 +100,14 @@ public static class OrchestratorHost
             builder.Services.AddHostedService<Orchestration.Reload.CentralConfigService>();
         }
 
+        // Session-start advertisement: pushes the catalog (every name + summary, plus promoted
+        // capabilities' full instructions) into the initialize handshake's server instructions
+        // and the list_capabilities tool description. Registration order is load-bearing: after
+        // the config services above (so the catalog — including central mode's initial fetch —
+        // is loaded) and before AddMcpServer's hosted service (so the text is set before the
+        // client's initialize arrives).
+        builder.Services.AddHostedService<CapabilityAdvertisementService>();
+
         // Optional session-trace side-channel (--trace-out <path> or MCP_ORCHESTRATOR_TRACE_OUT).
         // The connection manager picks this up by DI and records each discover/route so the run can
         // later be replayed with `profile --trace`. Off → a no-op writer, zero overhead.

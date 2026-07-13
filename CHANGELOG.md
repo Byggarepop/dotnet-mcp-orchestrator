@@ -7,6 +7,26 @@ All notable changes to this project are documented here. The format is based on
 The release workflow reads the section matching the tag (e.g. `## [0.1.0]` for tag `v0.1.0`) and
 uses it as the GitHub Release notes — so keep an entry per released version.
 
+## [Unreleased]
+
+### Added
+- Session-start catalog advertisement, fixing proactive-capability discoverability. The catalog
+  used to be pull-only (visible only in a `list_capabilities` result), so a capability the agent
+  should call unprompted was never triggered — nothing in the agent's context mentioned it. Now
+  the MCP initialize handshake's server instructions list every enabled capability's name +
+  summary, and capabilities marked with the new per-capability `promote` flag (default `false`)
+  get their full `instructions` hoisted in as well (capped at 2,000 chars each, with a pointer to
+  `list_capabilities` for the full text). The `list_capabilities` tool description also gains a
+  generated "Currently registered: …" suffix. `list_capabilities`/`discover_tools`/`route`
+  behavior is unchanged; the advertisement is a per-session snapshot (in central mode, taken
+  after the initial fetch). The committed central example catalog promotes `Unwritten`.
+- The advertisement block as a whole is budgeted at 1,900 characters (Claude Code was observed
+  to truncate rendered server instructions at ~2,048). Spent in priority order — header and all
+  name/summary lines first, then promoted instructions in catalog order; the first entry that
+  doesn't fit is truncated with the `list_capabilities` pointer, later promoted entries are
+  omitted, and a startup warning names the affected capabilities. The example catalog's
+  `Unwritten` entry was tightened to fit the budget whole.
+
 ## [0.3.0] - 2026-07-02
 
 ### Changed
