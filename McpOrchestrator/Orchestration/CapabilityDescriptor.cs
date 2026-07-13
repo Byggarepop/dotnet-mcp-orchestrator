@@ -32,6 +32,15 @@ public sealed class CapabilityDescriptor
     /// <summary>When false the capability is ignored (not advertised, not connectable).</summary>
     public bool Enabled { get; set; } = true;
 
+    /// <summary>
+    /// When true, this capability's <see cref="Instructions"/> are hoisted into the MCP
+    /// server-level instructions returned by the initialize handshake, so its trigger text is in
+    /// the agent's context from turn one — required for capabilities the agent must call
+    /// proactively (it has no reason to call <c>list_capabilities</c> unprompted). Off by default
+    /// to keep the handshake small; all capabilities always get their name + summary advertised.
+    /// </summary>
+    public bool Promote { get; set; }
+
     /// <summary>Transport kind. Only <c>stdio</c> is implemented in the prototype.</summary>
     public string Transport { get; set; } = "stdio";
 

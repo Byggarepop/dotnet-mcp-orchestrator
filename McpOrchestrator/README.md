@@ -49,6 +49,7 @@ the agent sends. The agent does all the thinking. The orchestrator is therefore 
 9. [Packaging — install as a .NET tool](#packaging-install-as-a-net-tool)
 10. [Add a new downstream MCP](#add-a-new-downstream-mcp)
 11. [Configuration reference](#configuration-reference)
+    - [Proactive capabilities (`promote`)](#proactive-capabilities-promote)
     - [Hot reload](#hot-reload)
     - [Central configuration](#central-configuration)
 12. [Testing](#testing)
@@ -95,6 +96,12 @@ retries instead of awaiting a dead connection.
 sent (echoed for auditing). Anything that goes wrong is returned as
 `{ "error": ..., "availableCapabilities": [...] }` rather than thrown, so the agent always receives
 parseable JSON.
+
+The catalog is not only pull-based: the initialize handshake's **server instructions** carry
+every capability's name + summary (and, for capabilities marked `"promote": true`, their full
+`instructions`), and the `list_capabilities` tool description ends with a generated *"Currently
+registered: …"* line. See
+[Proactive capabilities](#proactive-capabilities-promote) for why.
 
 There is deliberately **no "describe it in English" tool**: turning a sentence into a tool call is
 interpretation, and that's the agent's job (it already has the schemas from `discover_tools`). The
@@ -632,6 +639,9 @@ Adding a capability is a **config-only** change — no code. Edit your config fi
 orchestrator is a courier, the agent relies entirely on these instructions to know **which tool
 to call and exactly what arguments to pass**. Be specific and prescriptive:
 *"call `get_issue` and ALWAYS pass `{\"issueKey\":\"PROJ-123\"}`; never pass a sentence."*
+If the capability should be called **unprompted** (not just when the user asks for it), also set
+`"promote": true` and lead the instructions with the trigger conditions — see
+[Proactive capabilities](#proactive-capabilities-promote).
 
 **Step 3 — restart the agent host** (the catalog loads at startup), then verify:
 `list_capabilities` should now show your capability, and `discover_tools` should list its tools.
@@ -668,6 +678,7 @@ Each entry in `capabilities` is one downstream MCP server.
 | `summary` | recommended | `""` | One-line description shown to the model. `init` auto-generates it by connecting to the server once, from its `initialize` instructions (first sentence) or its tool names — such lines carry a trailing `// auto-generated` comment. Pass `init --no-summarize` to skip the connections and keep `TODO` placeholders instead. |
 | `instructions` | recommended | `""` | Prescriptive usage guidance: which tool, what arguments. The courier relies on this. |
 | `enabled` | no | `true` | When `false`, the capability is skipped entirely. |
+| `promote` | no | `false` | Hoist this capability's full `instructions` into the initialize handshake's server instructions so the agent sees its trigger text from turn one. Opt in for capabilities the agent must call *proactively*. See [Proactive capabilities](#proactive-capabilities-promote). |
 | `transport` | no | `"stdio"` | Only `stdio` is implemented. |
 | `command` | yes | — | Executable that launches the downstream server (e.g. `dotnet`, `npx`). An entry with no command is skipped. |
 | `args` | no | `[]` | Arguments to `command`. Supports `${VAR}` substitution. |
@@ -704,6 +715,35 @@ need any of these — plain absolute paths work fine — but they're available i
 A missing or invalid config is non-fatal: the server starts with **zero capabilities** and logs
 a warning/error rather than crashing.
 
+### Proactive capabilities (`promote`)
+
+`summary` and `instructions` are what the agent routes on **once it is already looking at the
+catalog** — i.e. after it calls `list_capabilities`. That works for capabilities the agent
+reaches for when the user asks ("check JIRA ticket X"). It fails for capabilities the agent must
+call **unprompted** (a convention guard that should run after every edit, say): nothing in the
+agent's context mentions them, so it has no cue to call `list_capabilities` mid-task, and the
+trigger text sits three hops away unseen.
+
+The orchestrator therefore advertises the catalog at session start, on the two surfaces an MCP
+client renders without being asked:
+
+- **Server instructions** (the `instructions` field of the initialize response): every enabled
+  capability's name + one-line summary, plus — for capabilities with `"promote": true` — their
+  full `instructions`. Per-capability instructions are capped at 2,000 characters (truncated with
+  a pointer to `list_capabilities` for the full text); summaries are capped at 300.
+- **The `list_capabilities` tool description** gets a generated suffix — *"Currently registered:
+  jira (Issue tracking…); …"* — so even a bare tool listing carries the capability names.
+
+Keep `promote` **opt-in and rare**: everything hoisted into the handshake is paid for in every
+session's context, which is exactly the cost the orchestrator exists to avoid. Promote a
+capability only when its value depends on the agent calling it spontaneously, and put the trigger
+conditions ("CALL THIS WHEN: …") at the top of its `instructions`.
+
+The advertisement is a per-session snapshot taken at startup (in central mode, after the initial
+fetch). A [hot reload](#hot-reload) updates `list_capabilities` results immediately, but the
+handshake text a client already received can't be resent — promoted-instruction changes fully
+apply on the next session.
+
 ### Hot reload
 
 The orchestrator watches its config file and applies edits **at runtime — no restart needed**.
@@ -717,8 +757,10 @@ updated in place / unchanged).
   config stays untouched — a typo never degrades the session.
 - Only *launch-relevant* changes (command, args, env values, workingDirectory, transport,
   timeouts) restart a downstream — the old connection drains its in-flight calls, then the new
-  definition connects lazily on next use. Editing just `summary`/`instructions`/`enabled` updates
-  metadata in place without touching the running server. Removed entries are disposed after their
+  definition connects lazily on next use. Editing just `summary`/`instructions`/`enabled`/`promote`
+  updates metadata in place without touching the running server (note the session-start
+  advertisement built from `promote` is a per-session snapshot — see
+  [Proactive capabilities](#proactive-capabilities-promote)). Removed entries are disposed after their
   in-flight calls complete.
 - The agent notices nothing except an updated `list_capabilities` result: the three meta-tools
   never change, so no `tools/list_changed` round-trip is involved.

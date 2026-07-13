@@ -131,7 +131,8 @@ internal sealed class ConfigReloader
             }
             else if (previous.Summary != entry.Summary
                 || previous.Instructions != entry.Instructions
-                || previous.Enabled != entry.Enabled)
+                || previous.Enabled != entry.Enabled
+                || previous.Promote != entry.Promote)
             {
                 metadataUpdated.Add(name);
             }
