@@ -48,7 +48,7 @@ internal sealed class CapabilityAdvertisementService : IHostedService
     /// <summary>Applies the advertisement to the given options (test seam).</summary>
     internal void Apply(McpServerOptions options, IReadOnlyList<CapabilityDescriptor> capabilities)
     {
-        options.ServerInstructions = CapabilityAdvertisement.BuildServerInstructions(capabilities);
+        options.ServerInstructions = CapabilityAdvertisement.BuildServerInstructions(capabilities, out var overBudget);
 
         if (options.ToolCollection is { } tools && tools.TryGetPrimitive("list_capabilities", out var tool))
         {
@@ -60,5 +60,14 @@ internal sealed class CapabilityAdvertisementService : IHostedService
             "Advertising {Count} capabilities in the initialize handshake ({Promoted} promoted)",
             capabilities.Count,
             capabilities.Count(c => c.Promote));
+
+        if (overBudget.Count > 0)
+        {
+            _logger.LogWarning(
+                "Advertisement block exceeds {Budget} chars; promoted instructions of {Names} were " +
+                "truncated or omitted. Shorten summaries/instructions or promote fewer capabilities.",
+                CapabilityAdvertisement.MaxTotalInstructionsChars,
+                string.Join(", ", overBudget));
+        }
     }
 }

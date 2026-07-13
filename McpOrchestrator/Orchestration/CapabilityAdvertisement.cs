@@ -18,11 +18,28 @@ namespace McpOrchestrator.Orchestration;
 internal static class CapabilityAdvertisement
 {
     /// <summary>
+    /// Budget for the whole server-instructions block. Claude Code (observed on 2.1.x,
+    /// 2026-07-13) renders roughly 2,048 chars of server instructions and silently truncates the
+    /// tail with its own note — an inferred client behavior, not documented protocol, so
+    /// re-measure occasionally and adjust. 1,900 leaves a safety margin under that cap. Spent in
+    /// priority order: header and every name/summary line first (the minimum viable scent), then
+    /// promoted instructions in catalog order; the first entry that does not fit is truncated
+    /// with a note and the rest are omitted — a visible cut beats a silent client-side one.
+    /// </summary>
+    internal const int MaxTotalInstructionsChars = 1_900;
+
+    /// <summary>
     /// Per-capability cap on promoted instructions hoisted into the handshake. Generous enough
     /// for real trigger text (a few paragraphs), small enough that one runaway entry cannot
     /// flood the session context.
     /// </summary>
     internal const int MaxPromotedInstructionsChars = 2_000;
+
+    /// <summary>
+    /// Smallest remaining budget worth spending on a truncated promoted entry; below this the
+    /// entry is omitted outright (a two-line stub carries no usable trigger text).
+    /// </summary>
+    private const int MinTruncatedEntryChars = 200;
 
     /// <summary>Per-capability cap on the summary line inside the server instructions.</summary>
     internal const int MaxSummaryChars = 300;
@@ -36,40 +53,93 @@ internal static class CapabilityAdvertisement
     /// Builds the server-level instructions block returned by the MCP initialize handshake, or
     /// <c>null</c> when the catalog is empty (the field is then omitted from the handshake).
     /// </summary>
-    public static string? BuildServerInstructions(IReadOnlyList<CapabilityDescriptor> capabilities)
+    public static string? BuildServerInstructions(IReadOnlyList<CapabilityDescriptor> capabilities) =>
+        BuildServerInstructions(capabilities, out _);
+
+    /// <summary>
+    /// Same as <see cref="BuildServerInstructions(IReadOnlyList{CapabilityDescriptor})"/>, also
+    /// reporting the promoted capabilities whose instructions were truncated or omitted because
+    /// the block hit <see cref="MaxTotalInstructionsChars"/> (in catalog order) — the caller
+    /// should warn, since the trigger text those capabilities were promoted for is (partially)
+    /// missing from the handshake.
+    /// </summary>
+    public static string? BuildServerInstructions(
+        IReadOnlyList<CapabilityDescriptor> capabilities, out IReadOnlyList<string> overBudget)
     {
+        overBudget = Array.Empty<string>();
         if (capabilities.Count == 0)
         {
             return null;
         }
 
         // '\n' throughout (not AppendLine): the block must be byte-identical across platforms.
-        var sb = new StringBuilder();
-        sb.Append(
+        // Pass 1 — render the unconditional base: the header and one name/summary line per
+        // capability. These are the minimum viable scent and are never dropped; the total
+        // budget applies to what the promoted instructions may add on top.
+        const string header =
             "This orchestrator proxies the downstream MCP capabilities listed below. Call " +
             "'list_capabilities' for the full catalog, 'discover_tools' to see one capability's " +
-            "tools and schemas, then 'route' to invoke a tool.\n\nCapabilities:\n");
+            "tools and schemas, then 'route' to invoke a tool.\n\nCapabilities:\n";
+        var summaryLines = capabilities.Select(c => string.IsNullOrWhiteSpace(c.Summary)
+            ? $"- {c.Name}\n"
+            : $"- {c.Name}: {Truncate(OneLine(c.Summary), MaxSummaryChars, " …")}\n").ToList();
+        var remaining = MaxTotalInstructionsChars - header.Length - summaryLines.Sum(l => l.Length);
 
-        foreach (var capability in capabilities)
+        // Pass 2 — assemble, spending the remaining budget on promoted instructions in catalog
+        // order (each block sits under its capability's summary line). The first entry that
+        // does not fit is truncated with the note; every later promoted entry is omitted.
+        var sb = new StringBuilder(header);
+        var dropped = new List<string>();
+        for (var i = 0; i < capabilities.Count; i++)
         {
-            sb.Append("- ").Append(capability.Name);
-            if (!string.IsNullOrWhiteSpace(capability.Summary))
-            {
-                sb.Append(": ").Append(Truncate(OneLine(capability.Summary), MaxSummaryChars, " …"));
-            }
-            sb.Append('\n');
+            sb.Append(summaryLines[i]);
 
-            if (capability.Promote && !string.IsNullOrWhiteSpace(capability.Instructions))
+            var capability = capabilities[i];
+            if (!capability.Promote || string.IsNullOrWhiteSpace(capability.Instructions))
             {
-                var text = Truncate(capability.Instructions.Trim(), MaxPromotedInstructionsChars, TruncationNote);
-                foreach (var line in text.Split('\n'))
+                continue;
+            }
+            if (dropped.Count > 0)
+            {
+                dropped.Add(capability.Name);
+                continue;
+            }
+
+            var entry = RenderPromotedEntry(capability);
+            if (entry.Length <= remaining)
+            {
+                sb.Append(entry);
+                remaining -= entry.Length;
+            }
+            else
+            {
+                dropped.Add(capability.Name);
+                if (remaining >= MinTruncatedEntryChars)
                 {
-                    sb.Append("  ").Append(line.TrimEnd('\r')).Append('\n');
+                    sb.Append(entry, 0, remaining - TruncationNote.Length - 1)
+                        .Append(TruncationNote).Append('\n');
                 }
             }
         }
 
+        if (dropped.Count > 0)
+        {
+            overBudget = dropped;
+        }
+
         return sb.ToString().TrimEnd();
+    }
+
+    /// <summary>Renders one promoted capability's instructions as an indented block ending in '\n'.</summary>
+    private static string RenderPromotedEntry(CapabilityDescriptor capability)
+    {
+        var text = Truncate(capability.Instructions!.Trim(), MaxPromotedInstructionsChars, TruncationNote);
+        var sb = new StringBuilder();
+        foreach (var line in text.Split('\n'))
+        {
+            sb.Append("  ").Append(line.TrimEnd('\r')).Append('\n');
+        }
+        return sb.ToString();
     }
 
     /// <summary>

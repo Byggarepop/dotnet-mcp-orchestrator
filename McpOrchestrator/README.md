@@ -734,10 +734,22 @@ client renders without being asked:
 - **The `list_capabilities` tool description** gets a generated suffix — *"Currently registered:
   jira (Issue tracking…); …"* — so even a bare tool listing carries the capability names.
 
+**The whole block is budgeted at 1,900 characters.** Clients cap what they render: Claude Code
+(observed on 2.1.x, July 2026 — inferred behavior, not documented protocol; re-measured
+occasionally) keeps roughly 2,048 characters of server instructions and silently truncates the
+rest mid-sentence. The orchestrator therefore stays under that itself, spending the budget in
+priority order: the header and every name/summary line first (the minimum viable scent, never
+dropped), then promoted instructions in catalog order. The first entry that doesn't fit is
+truncated with the `list_capabilities` pointer and any later promoted entries are omitted — a
+visible cut beats a silent client-side one — and a startup warning names the affected
+capabilities.
+
 Keep `promote` **opt-in and rare**: everything hoisted into the handshake is paid for in every
-session's context, which is exactly the cost the orchestrator exists to avoid. Promote a
-capability only when its value depends on the agent calling it spontaneously, and put the trigger
-conditions ("CALL THIS WHEN: …") at the top of its `instructions`.
+session's context, which is exactly the cost the orchestrator exists to avoid. Promotion is for
+proactive-trigger capabilities, not documentation. Practical sizing so nothing gets cut: keep
+summaries ≤ ~200 characters, promoted instructions ≤ ~1,400 characters, and promote sparingly —
+put the trigger conditions ("CALL THIS WHEN: …") at the top of the `instructions` so they survive
+any truncation.
 
 The advertisement is a per-session snapshot taken at startup (in central mode, after the initial
 fetch). A [hot reload](#hot-reload) updates `list_capabilities` results immediately, but the

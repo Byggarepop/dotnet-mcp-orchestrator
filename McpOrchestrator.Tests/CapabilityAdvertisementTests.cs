@@ -1,4 +1,5 @@
 using McpOrchestrator.Orchestration;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using ModelContextProtocol.Server;
 using Xunit;
@@ -100,6 +101,91 @@ public sealed class CapabilityAdvertisementTests
         Assert.DoesNotContain(new string('s', CapabilityAdvertisement.MaxSummaryChars + 100), text);
     }
 
+    // ----- Total block budget ---------------------------------------------------------------------
+
+    [Fact]
+    public void BuildServerInstructions_under_budget_reports_nothing_over_budget()
+    {
+        var text = CapabilityAdvertisement.BuildServerInstructions(new[]
+        {
+            Cap("guard", "Guard.", instructions: "CALL THIS WHEN: always.", promote: true),
+            Cap("jira", "Issue tracking."),
+        }, out var overBudget);
+
+        Assert.Empty(overBudget);
+        Assert.Contains("CALL THIS WHEN: always.", text);
+        Assert.True(text!.Length <= CapabilityAdvertisement.MaxTotalInstructionsChars);
+    }
+
+    [Fact]
+    public void BuildServerInstructions_truncates_the_entry_crossing_the_total_budget()
+    {
+        // First promoted entry fits; the second crosses the total budget and gets the note.
+        var text = CapabilityAdvertisement.BuildServerInstructions(new[]
+        {
+            Cap("first", "A.", instructions: "FIRST-MARKER " + new string('a', 800), promote: true),
+            Cap("second", "B.", instructions: "SECOND-MARKER " + new string('b', 1_500), promote: true),
+        }, out var overBudget);
+
+        Assert.Equal(new[] { "second" }, overBudget);
+        Assert.NotNull(text);
+        Assert.True(text!.Length <= CapabilityAdvertisement.MaxTotalInstructionsChars);
+        Assert.Contains("FIRST-MARKER", text);
+        Assert.Contains(new string('a', 800), text); // first entry intact
+        Assert.Contains("SECOND-MARKER", text);      // second starts…
+        Assert.DoesNotContain(new string('b', 1_500), text); // …but is cut
+        Assert.Contains("truncated — call 'list_capabilities'", text);
+    }
+
+    [Fact]
+    public void BuildServerInstructions_omits_promoted_entries_after_the_first_over_budget_one()
+    {
+        var text = CapabilityAdvertisement.BuildServerInstructions(new[]
+        {
+            Cap("big", "A.", instructions: new string('a', CapabilityAdvertisement.MaxPromotedInstructionsChars), promote: true),
+            Cap("late", "B.", instructions: "LATE-MARKER never advertised.", promote: true),
+        }, out var overBudget);
+
+        Assert.Equal(new[] { "big", "late" }, overBudget);
+        Assert.True(text!.Length <= CapabilityAdvertisement.MaxTotalInstructionsChars);
+        Assert.DoesNotContain("LATE-MARKER", text);
+        Assert.Contains("- late: B.", text); // the summary line always survives
+        Assert.Contains("truncated — call 'list_capabilities'", text);
+    }
+
+    [Fact]
+    public void Service_warns_when_the_budget_drops_promoted_instructions()
+    {
+        var log = new CollectingLogger();
+        var options = new McpServerOptions();
+        var registry = new CapabilityRegistry(CapabilityCatalog.FromDescriptors(
+            new[]
+            {
+                Cap("big", "A.", instructions: new string('a', CapabilityAdvertisement.MaxPromotedInstructionsChars), promote: true),
+                Cap("late", "B.", instructions: "Never fits.", promote: true),
+            },
+            NullLogger.Instance));
+        var service = new CapabilityAdvertisementService(
+            Microsoft.Extensions.Options.Options.Create(options), registry,
+            new WrappingLogger<CapabilityAdvertisementService>(log));
+
+        service.Apply(options, registry.Capabilities);
+
+        var warning = Assert.Single(log.Entries, e => e.Level == LogLevel.Warning);
+        Assert.Contains("big, late", warning.Message);
+        Assert.Contains(CapabilityAdvertisement.MaxTotalInstructionsChars.ToString(), warning.Message);
+    }
+
+    private sealed class WrappingLogger<T> : ILogger<T>
+    {
+        private readonly ILogger _inner;
+        public WrappingLogger(ILogger inner) => _inner = inner;
+        public IDisposable? BeginScope<TState>(TState state) where TState : notnull => _inner.BeginScope(state);
+        public bool IsEnabled(LogLevel logLevel) => _inner.IsEnabled(logLevel);
+        public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter) =>
+            _inner.Log(logLevel, eventId, state, exception, formatter);
+    }
+
     // ----- AppendCatalogScent ---------------------------------------------------------------------
 
     [Fact]
@@ -181,11 +267,15 @@ public sealed class CapabilityAdvertisementTests
             forbidLocalPlaceholders: true, NullLogger.Instance);
         Assert.NotNull(loaded);
 
-        var text = CapabilityAdvertisement.BuildServerInstructions(loaded!.Catalog.Capabilities);
+        var text = CapabilityAdvertisement.BuildServerInstructions(loaded!.Catalog.Capabilities, out var overBudget);
 
         Assert.NotNull(text);
         Assert.Contains("Unwritten", text);
         Assert.Contains("CALL THIS WHEN", text);
         Assert.Contains("check_holes", text);
+        // The example must fit the total budget whole — it is the catalog people copy, and the
+        // budget exists because Claude Code truncates the rendered block at ~2,048 chars.
+        Assert.Empty(overBudget);
+        Assert.True(text!.Length <= CapabilityAdvertisement.MaxTotalInstructionsChars);
     }
 }

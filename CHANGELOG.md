@@ -20,6 +20,12 @@ uses it as the GitHub Release notes — so keep an entry per released version.
   generated "Currently registered: …" suffix. `list_capabilities`/`discover_tools`/`route`
   behavior is unchanged; the advertisement is a per-session snapshot (in central mode, taken
   after the initial fetch). The committed central example catalog promotes `Unwritten`.
+- The advertisement block as a whole is budgeted at 1,900 characters (Claude Code was observed
+  to truncate rendered server instructions at ~2,048). Spent in priority order — header and all
+  name/summary lines first, then promoted instructions in catalog order; the first entry that
+  doesn't fit is truncated with the `list_capabilities` pointer, later promoted entries are
+  omitted, and a startup warning names the affected capabilities. The example catalog's
+  `Unwritten` entry was tightened to fit the budget whole.
 
 ## [0.3.0] - 2026-07-02
 
