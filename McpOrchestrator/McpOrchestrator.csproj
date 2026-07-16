@@ -44,6 +44,7 @@
          marker with an exact, case-sensitive match. (.NET/NuGet has no csproj mcpName property; that
          README marker is the NuGet equivalent of npm's package.json mcpName.) -->
     <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PackageIcon>logo-512.png</PackageIcon>
   </PropertyGroup>
 
   <!-- Size/perf knobs that apply ONLY to a Native-AOT publish (pass -p:PublishAot=true). They are
@@ -59,6 +60,8 @@
   <ItemGroup>
     <!-- Ship the root README as the package README shown on nuget.org. -->
     <None Include="..\README.md" Pack="true" PackagePath="\" />
+    <!-- Package icon shown on nuget.org (PackageIcon above points at this packed file). -->
+    <None Include="img\logo-512.png" Pack="true" PackagePath="\" />
     <!-- Pack the registry manifest at .mcp/server.json INSIDE the package. nuget.org reads this
          embedded file to render the "MCP Server" tab and the one-click VS Code config (dnx-based);
          without it nuget.org shows "this package does not include a server.json file". Keep this in
