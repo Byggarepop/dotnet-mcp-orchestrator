@@ -16,21 +16,23 @@ internal sealed record ReceivedRequest(string? IfNoneMatch, string? IfModifiedSi
 /// </summary>
 internal sealed class TestConfigServer : IDisposable
 {
-    private readonly HttpListener _listener = new();
+    private readonly HttpListener _listener;
     private readonly List<ReceivedRequest> _requests = new();
 
     public TestConfigServer()
     {
-        // HttpListener cannot bind port 0; probe random high ports until one is free.
+        // HttpListener cannot bind port 0; probe random high ports until one is free. A failed
+        // Start() disposes the listener, so each attempt needs a fresh instance.
         for (var attempt = 0; ; attempt++)
         {
             var port = Random.Shared.Next(20000, 60000);
             var prefix = $"http://127.0.0.1:{port}/";
-            _listener.Prefixes.Clear();
-            _listener.Prefixes.Add(prefix);
+            var listener = new HttpListener();
+            listener.Prefixes.Add(prefix);
             try
             {
-                _listener.Start();
+                listener.Start();
+                _listener = listener;
                 Url = prefix + "orchestrator.config.json";
                 break;
             }
