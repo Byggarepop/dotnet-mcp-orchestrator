@@ -1,5 +1,7 @@
 <!-- mcp-name: io.github.Byggarepop/dotnet-mcp-orchestrator -->
 
+![McpOrchestrator — one relay between your agent and every MCP server](https://raw.githubusercontent.com/Byggarepop/dotnet-mcp-orchestrator/main/McpOrchestrator/img/social-preview.png)
+
 # McpOrchestrator — a .NET-native MCP orchestrator
 
 [![NuGet](https://img.shields.io/nuget/v/McpOrchestrator.svg)](https://www.nuget.org/packages/McpOrchestrator)
