@@ -7,6 +7,17 @@ All notable changes to this project are documented here. The format is based on
 The release workflow reads the section matching the tag (e.g. `## [0.1.0]` for tag `v0.1.0`) and
 uses it as the GitHub Release notes — so keep an entry per released version.
 
+## [0.4.1] - 2026-07-16
+
+### Added
+- Project logo and social preview images (`McpOrchestrator/img/`). The logo is packed into the
+  NuGet package and set as its icon on nuget.org; the README opens with the social preview banner
+  (served via an absolute GitHub URL so it renders on nuget.org too).
+
+### Security
+- Pinned the transitive `Microsoft.Bcl.Memory` (pulled in via the MCP SDK chain) to 10.0.10,
+  moving off 9.0.4 which has a known high-severity vulnerability (GHSA-73j8-2gch-69rq / NU1903).
+
 ## [0.4.0] - 2026-07-13
 
 ### Added
