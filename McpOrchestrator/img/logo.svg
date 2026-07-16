@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+  <!-- badge -->
+  <rect x="0" y="0" width="512" height="512" rx="104" fill="#17121F"/>
+  <rect x="10" y="10" width="492" height="492" rx="96" fill="none" stroke="#2B2240" stroke-width="4"/>
+
+  <!-- dormant routes (dashed, dim) -->
+  <path d="M 256 256 C 320 256 320 148 384 148" fill="none" stroke="#4A3F66" stroke-width="18" stroke-linecap="round" stroke-dasharray="2 34"/>
+  <path d="M 256 256 C 320 256 320 364 384 364" fill="none" stroke="#4A3F66" stroke-width="18" stroke-linecap="round" stroke-dasharray="2 34"/>
+
+  <!-- active route (lit) -->
+  <path d="M 96 256 L 232 256" fill="none" stroke="#FFAE45" stroke-width="20" stroke-linecap="round"/>
+  <path d="M 280 256 L 384 256" fill="none" stroke="#FFAE45" stroke-width="20" stroke-linecap="round"/>
+
+  <!-- downstream server nodes -->
+  <circle cx="404" cy="148" r="26" fill="none" stroke="#4A3F66" stroke-width="14"/>
+  <circle cx="404" cy="256" r="26" fill="#FFAE45"/>
+  <circle cx="404" cy="364" r="26" fill="none" stroke="#4A3F66" stroke-width="14"/>
+
+  <!-- agent node -->
+  <circle cx="88" cy="256" r="26" fill="#8B7CF7"/>
+
+  <!-- orchestrator node: diamond -->
+  <rect x="216" y="216" width="80" height="80" rx="18" fill="#17121F" stroke="#8B7CF7" stroke-width="16" transform="rotate(45 256 256)"/>
+</svg>
