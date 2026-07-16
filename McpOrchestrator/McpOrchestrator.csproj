@@ -76,6 +76,10 @@
     <PackageReference Include="ModelContextProtocol" Version="1.4.0" />
     <PackageReference Include="ModelContextProtocol.Core" Version="1.4.0" />
     <PackageReference Include="Microsoft.Extensions.Hosting" Version="9.0.0" />
+    <!-- Not used directly: pins the transitive Microsoft.Bcl.Memory (via the MCP SDK chain) above
+         9.0.4, which has a known high-severity vulnerability (GHSA-73j8-2gch-69rq / NU1903).
+         Remove once the SDK's own dependency floor moves past it. -->
+    <PackageReference Include="Microsoft.Bcl.Memory" Version="10.0.10" />
     <!-- Local, deterministic token counting for the `profile` command (cl100k_base, the
          Claude/GPT-4 BPE). Data.Cl100kBase embeds the vocab so counting is offline/CI-friendly
          and AOT-safe (no runtime download). Only the `profile` subcommand touches these; the
