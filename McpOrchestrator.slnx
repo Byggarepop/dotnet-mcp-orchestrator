@@ -1,4 +1,6 @@
 <Solution>
+  <Project Path="McpOrchestrator.Tui.Tests/McpOrchestrator.Tui.Tests.csproj" />
+  <Project Path="McpOrchestrator.Tui/McpOrchestrator.Tui.csproj" />
   <Project Path="McpOrchestrator/McpOrchestrator.csproj" />
   <Project Path="McpOrchestrator.DemoMcp/McpOrchestrator.DemoMcp.csproj" />
   <Project Path="McpOrchestrator.SmokeTest/McpOrchestrator.SmokeTest.csproj" />

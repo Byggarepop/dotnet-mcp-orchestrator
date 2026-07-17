@@ -69,6 +69,12 @@ public sealed class CapabilityDescriptor
     /// connection cached for the next request.
     /// </summary>
     public int? CallTimeoutSeconds { get; set; }
+
+    /// <summary>
+    /// Captures unknown JSON keys during deserialization, so the orchestrator can read and write config files with extra fields it doesn't understand.
+    /// </summary>
+    [JsonExtensionData]
+    public Dictionary<string, JsonElement>? ExtensionData { get; set; }
 }
 
 /// <summary>Root of the orchestrator configuration file.</summary>
@@ -76,6 +82,16 @@ public sealed class OrchestratorConfig
 {
     /// <summary>The downstream MCP servers this orchestrator can reach.</summary>
     public List<CapabilityDescriptor> Capabilities { get; set; } = new();
+    /// <summary>
+    /// Registry of MCP source urls.
+    /// </summary>
+    public List<RegistrySource> Registries { get; set; } = new();
+
+    /// <summary>
+    /// Captures unknown JSON keys during deserialization, so the orchestrator can read and write config files with extra fields it doesn't understand.
+    /// </summary>
+    [JsonExtensionData]
+    public Dictionary<string, JsonElement>? ExtensionData { get; set; }
 }
 
 /// <summary>
@@ -88,3 +104,25 @@ public sealed class OrchestratorConfig
     ReadCommentHandling = JsonCommentHandling.Skip)]
 [JsonSerializable(typeof(OrchestratorConfig))]
 internal sealed partial class OrchestratorConfigJsonContext : JsonSerializerContext;
+
+/// <summary>
+/// This class is used by the TUI project, not the orchestrator
+/// </summary>
+public sealed class RegistrySource
+{
+    /// <summary>
+    /// Display name the TUI shows when cycling sources (e.g. "official", "acme-internal").
+    /// </summary>
+    public string Name { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Base URL of a registry implementing the /v0/servers API.
+    /// </summary>
+    public string Url { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Captures unknown JSON keys during deserialization, so the orchestrator can read and write config files with extra fields it doesn't understand.
+    /// </summary>
+    [JsonExtensionData]
+    public Dictionary<string, JsonElement>? ExtensionData { get; set; }
+}
