@@ -19,4 +19,9 @@
     <ProjectReference Include="..\McpOrchestrator.Tui\McpOrchestrator.Tui.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- Registry response fixtures captured from the real /v0/servers API. -->
+    <None Update="Fixtures\**" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
 </Project>
