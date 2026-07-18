@@ -157,6 +157,48 @@ The agent now sees the three meta-tools and the flow is `list_capabilities` → 
 | `McpOrchestrator.DemoMcp` | Sample downstream MCP (`--persona jira` / `codegen` / `diag`). |
 | `McpOrchestrator.SmokeTest` | Console MCP client that drives the orchestrator end-to-end. |
 | `McpOrchestrator.Tests` | xUnit suite: unit + integration + end-to-end. |
+| `McpOrchestrator.Tui` | Terminal UI (`mcporch`) for managing the config and browsing MCP registries. |
+| `McpOrchestrator.Tui.Tests` | xUnit suite for the TUI's services. |
+
+## TUI
+
+A keyboard-driven terminal UI for `orchestrator.config.json`: list and edit the configured
+servers, and browse MCP registries to add new ones. Saves are atomic (previous file kept as
+`orchestrator.config.json.bak`), unknown JSON keys are preserved, and the running
+orchestrator picks up changes via hot reload — no restart needed.
+
+```bash
+dotnet tool install --global McpOrchestrator.Tui   # installs the `mcporch` command
+cd <directory with orchestrator.config.json>
+mcporch
+```
+
+| Key | Action |
+| --- | --- |
+| `↑`/`↓` | Select server |
+| `Ctrl+S` | Save edits in the detail pane |
+| `a` | Browse a registry and add a server |
+| `d` | Remove selected server (with confirmation) |
+| `q` | Quit |
+
+In the registry browser: type to search (debounced), `Enter` adds the selected entry
+(choosing the install option and prompting for declared environment variables — secret-like
+values are masked), `Ctrl+R` cycles registry sources, `Ctrl+L` loads more results, `Esc`
+closes. Extra registry sources (e.g. a company-internal subregistry implementing the same
+`/v0/servers` API) live in the config's `registries` section; the official registry is
+always available:
+
+```jsonc
+{
+  "registries": [
+    { "name": "official", "url": "https://registry.modelcontextprotocol.io" },
+    { "name": "acme-internal", "url": "https://mcp.acme.example" }
+  ]
+}
+```
+
+Remote-hosted registry entries (streamable-http/sse) are shown but not addable — the
+orchestrator launches stdio servers only.
 
 ## The three tools
 
