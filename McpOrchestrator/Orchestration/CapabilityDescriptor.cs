@@ -95,18 +95,8 @@ public sealed class OrchestratorConfig
 }
 
 /// <summary>
-/// Source-generation context for reading the config file (case-insensitive, tolerant of comments
-/// and trailing commas). AOT/trim-safe — no reflection-based deserialization.
-/// </summary>
-[JsonSourceGenerationOptions(
-    PropertyNameCaseInsensitive = true,
-    AllowTrailingCommas = true,
-    ReadCommentHandling = JsonCommentHandling.Skip)]
-[JsonSerializable(typeof(OrchestratorConfig))]
-internal sealed partial class OrchestratorConfigJsonContext : JsonSerializerContext;
-
-/// <summary>
-/// This class is used by the TUI project, not the orchestrator
+/// A named MCP registry endpoint the TUI can browse and add servers from. Consumed by the
+/// TUI project only — the orchestrator itself ignores this section.
 /// </summary>
 public sealed class RegistrySource
 {
@@ -126,3 +116,14 @@ public sealed class RegistrySource
     [JsonExtensionData]
     public Dictionary<string, JsonElement>? ExtensionData { get; set; }
 }
+
+/// <summary>
+/// Source-generation context for reading the config file (case-insensitive, tolerant of comments
+/// and trailing commas). AOT/trim-safe — no reflection-based deserialization.
+/// </summary>
+[JsonSourceGenerationOptions(
+    PropertyNameCaseInsensitive = true,
+    AllowTrailingCommas = true,
+    ReadCommentHandling = JsonCommentHandling.Skip)]
+[JsonSerializable(typeof(OrchestratorConfig))]
+internal sealed partial class OrchestratorConfigJsonContext : JsonSerializerContext;

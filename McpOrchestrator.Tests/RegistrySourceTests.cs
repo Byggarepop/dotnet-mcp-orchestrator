@@ -16,8 +16,8 @@ public sealed class RegistrySourceTests
     {
         var result = JsonSerializer.Deserialize(json, OrchestratorConfigJsonContext.Default.OrchestratorConfig);
 
-        Assert.Equal("Name", result?.Registries[0].Name.ToString());
-        Assert.Equal("Url", result?.Registries[0].Url.ToString());
+        Assert.Equal("Name", result?.Registries[0].Name);
+        Assert.Equal("Url", result?.Registries[0].Url);
     }
 
     [Theory]
@@ -27,9 +27,9 @@ public sealed class RegistrySourceTests
     {
         var result = JsonSerializer.Deserialize(json, OrchestratorConfigJsonContext.Default.OrchestratorConfig);
 
-        Assert.Equal("CapabilityName", result?.Capabilities[0].Name.ToString());
-        Assert.Equal("Name", result?.Registries[0].Name.ToString());
-        Assert.Equal("Url", result?.Registries[0].Url.ToString());
+        Assert.Equal("CapabilityName", result?.Capabilities[0].Name);
+        Assert.Equal("Name", result?.Registries[0].Name);
+        Assert.Equal("Url", result?.Registries[0].Url);
     }
 
     [Theory]
@@ -39,7 +39,7 @@ public sealed class RegistrySourceTests
     {
         var result = JsonSerializer.Deserialize(json, OrchestratorConfigJsonContext.Default.OrchestratorConfig);
 
-        Assert.Equal("CapabilityName", result?.Capabilities[0].Name.ToString());
+        Assert.Equal("CapabilityName", result?.Capabilities[0].Name);
         Assert.NotNull(result?.Registries);
         Assert.Empty(result.Registries);
     }
@@ -60,9 +60,9 @@ public sealed class RegistrySourceTests
 
         var result = JsonSerializer.Deserialize(configAsJson, OrchestratorConfigJsonContext.Default.OrchestratorConfig);
 
-        Assert.Equal("Name", result?.Registries[0].Name.ToString());
-        Assert.Equal("Url", result?.Registries[0].Url.ToString());
-        Assert.Equal("CapabilityName", result?.Capabilities[0].Name.ToString());
+        Assert.Equal("Name", result?.Registries[0].Name);
+        Assert.Equal("Url", result?.Registries[0].Url);
+        Assert.Equal("CapabilityName", result?.Capabilities[0].Name);
     }
 
 }

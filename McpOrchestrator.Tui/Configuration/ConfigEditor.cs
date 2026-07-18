@@ -11,6 +11,72 @@ namespace McpOrchestrator.Tui.Configuration
         public const string OfficialRegistryName = "official";
         public const string OfficialRegistryUrl = "https://registry.modelcontextprotocol.io";
 
+        private const string ConfigFileName = "orchestrator.config.json";
+
+        /// <summary>
+        /// Finds the config file the way the orchestrator does, adapted to a tool that can
+        /// be started anywhere: the <c>MCP_ORCHESTRATOR_CONFIG</c> env override wins; then
+        /// <c>orchestrator.config.json</c> in <paramref name="startDir"/>; then, walking up
+        /// only as far as the nearest repo/solution root (a directory with <c>.git</c> or a
+        /// solution file — never beyond, so a stray config in e.g. the user profile is not
+        /// picked up), each ancestor's config or its <c>McpOrchestrator</c> subfolder's.
+        /// When nothing exists yet, falls back to <paramref name="startDir"/> so the first
+        /// save creates the file there.
+        /// </summary>
+        /// <param name="startDir">Directory to start searching from, typically the current directory.</param>
+        /// <returns>The full path of the config file to load and save.</returns>
+        public string ResolveConfigPath(string startDir)
+        {
+            var overridePath = Environment.GetEnvironmentVariable("MCP_ORCHESTRATOR_CONFIG");
+            if (!string.IsNullOrWhiteSpace(overridePath))
+                return Path.GetFullPath(overridePath);
+
+            var start = Path.GetFullPath(startDir);
+            var direct = Path.Combine(start, ConfigFileName);
+            if (File.Exists(direct))
+                return direct;
+
+            var projectRoot = FindProjectRoot(start);
+            if (projectRoot is not null)
+            {
+                for (var dir = new DirectoryInfo(start); dir is not null; dir = dir.Parent)
+                {
+                    var candidate = Path.Combine(dir.FullName, ConfigFileName);
+                    if (File.Exists(candidate))
+                        return candidate;
+
+                    var nested = Path.Combine(dir.FullName, "McpOrchestrator", ConfigFileName);
+                    if (File.Exists(nested))
+                        return nested;
+
+                    if (string.Equals(dir.FullName, projectRoot, StringComparison.OrdinalIgnoreCase))
+                        break;
+                }
+            }
+
+            return direct;
+        }
+
+        /// <summary>
+        /// The nearest ancestor of <paramref name="start"/> (inclusive) that looks like a
+        /// repo or solution root — contains <c>.git</c> or a solution file — or null when
+        /// <paramref name="start"/> is not inside a project at all.
+        /// </summary>
+        private static string? FindProjectRoot(string start)
+        {
+            for (var dir = new DirectoryInfo(start); dir is not null; dir = dir.Parent)
+            {
+                if (Directory.Exists(Path.Combine(dir.FullName, ".git"))
+                    || Directory.EnumerateFiles(dir.FullName, "*.sln").Any()
+                    || Directory.EnumerateFiles(dir.FullName, "*.slnx").Any())
+                {
+                    return dir.FullName;
+                }
+            }
+
+            return null;
+        }
+
         /// <summary>
         /// Loads the orchestrator configuration from the specified JSON file path.
         /// </summary>

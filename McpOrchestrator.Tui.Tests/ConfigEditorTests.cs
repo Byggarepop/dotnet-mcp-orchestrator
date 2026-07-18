@@ -57,6 +57,62 @@ public sealed class ConfigEditorTests
     }
 
     [Fact]
+    public void ResolveConfigPath_env_override_wins()
+    {
+        var previous = Environment.GetEnvironmentVariable("MCP_ORCHESTRATOR_CONFIG");
+        try
+        {
+            Environment.SetEnvironmentVariable("MCP_ORCHESTRATOR_CONFIG", @"C:\somewhere\custom.json");
+
+            var resolved = new ConfigEditor().ResolveConfigPath(Directory.GetCurrentDirectory());
+
+            Assert.Equal(@"C:\somewhere\custom.json", resolved);
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("MCP_ORCHESTRATOR_CONFIG", previous);
+        }
+    }
+
+    [Fact]
+    public void ResolveConfigPath_finds_config_in_start_dir_then_ancestors_then_nested()
+    {
+        var previous = Environment.GetEnvironmentVariable("MCP_ORCHESTRATOR_CONFIG");
+        try
+        {
+            Environment.SetEnvironmentVariable("MCP_ORCHESTRATOR_CONFIG", null);
+            var root = Directory.CreateTempSubdirectory("mcp-orch-test");
+            var child = Directory.CreateDirectory(Path.Combine(root.FullName, "a", "b"));
+            var editor = new ConfigEditor();
+
+            // Nothing exists: fall back to the start dir (file created on first save).
+            Assert.Equal(Path.Combine(child.FullName, "orchestrator.config.json"),
+                editor.ResolveConfigPath(child.FullName));
+
+            // An ancestor config is NOT picked up without a project-root marker —
+            // the walk must never escape the project (e.g. into the user profile).
+            var nestedDir = Directory.CreateDirectory(Path.Combine(root.FullName, "McpOrchestrator"));
+            var nested = Path.Combine(nestedDir.FullName, "orchestrator.config.json");
+            File.WriteAllText(nested, "{}");
+            Assert.Equal(Path.Combine(child.FullName, "orchestrator.config.json"),
+                editor.ResolveConfigPath(child.FullName));
+
+            // With a .git marker at the root, the McpOrchestrator subfolder layout is found.
+            Directory.CreateDirectory(Path.Combine(root.FullName, ".git"));
+            Assert.Equal(nested, editor.ResolveConfigPath(child.FullName));
+
+            // A config directly in the start dir wins over the ancestor's.
+            var direct = Path.Combine(child.FullName, "orchestrator.config.json");
+            File.WriteAllText(direct, "{}");
+            Assert.Equal(direct, editor.ResolveConfigPath(child.FullName));
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("MCP_ORCHESTRATOR_CONFIG", previous);
+        }
+    }
+
+    [Fact]
     public void Save_then_load_round_trip_preserves_capabilities_registries_and_unknown_keys()
     {
         var dir = Directory.CreateTempSubdirectory("mcp-orch-test");
