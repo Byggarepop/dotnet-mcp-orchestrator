@@ -73,8 +73,8 @@
     <!-- ModelContextProtocol = server + hosting integration. .Core (transitive, pinned
          here for clarity) carries the MCP *client* types (McpClient, StdioClientTransport)
          the orchestrator uses to connect to downstream MCP servers. -->
-    <PackageReference Include="ModelContextProtocol" Version="1.4.0" />
-    <PackageReference Include="ModelContextProtocol.Core" Version="1.4.0" />
+    <PackageReference Include="ModelContextProtocol" Version="2.0.0" />
+    <PackageReference Include="ModelContextProtocol.Core" Version="2.0.0" />
     <PackageReference Include="Microsoft.Extensions.Hosting" Version="9.0.0" />
     <!-- Not used directly: pins the transitive Microsoft.Bcl.Memory (via the MCP SDK chain) above
          9.0.4, which has a known high-severity vulnerability (GHSA-73j8-2gch-69rq / NU1903).

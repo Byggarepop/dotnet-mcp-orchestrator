@@ -11,7 +11,7 @@
 
   <ItemGroup>
     <!-- Client-only: this app connects to the orchestrator as an MCP client. -->
-    <PackageReference Include="ModelContextProtocol.Core" Version="1.4.0" />
+    <PackageReference Include="ModelContextProtocol.Core" Version="2.0.0" />
   </ItemGroup>
 
 </Project>
