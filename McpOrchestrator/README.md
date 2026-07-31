@@ -890,6 +890,46 @@ optional `references/`, `scripts/`, and `assets/` — from local folders, git re
 HTTP(S) index. Same design principle as the rest of the tool: the catalog costs a name + one line
 per skill; full content loads only on demand. Skills are **served as files, never executed**.
 
+### Try it in five minutes
+
+The repo ships a sample skill (`docs/skills/release-notes/`) already wired into
+`orchestrator.config.sample.json`, so from a fresh clone:
+
+```bash
+# 1. Build
+dotnet build McpOrchestrator.slnx -c Release
+
+# 2. Open the MCP Inspector against the orchestrator (pass the config via -e; the
+#    Inspector does NOT forward your shell's environment to the server it spawns)
+npx @modelcontextprotocol/inspector \
+  -e MCP_ORCHESTRATOR_CONFIG=<repo>/McpOrchestrator/orchestrator.config.sample.json \
+  dotnet run --project <repo>/McpOrchestrator --no-build -c Release
+```
+
+In the Inspector UI:
+
+1. **Tools** tab → run `list_skills` → one entry: `release-notes` (name + one line — the whole
+   upfront cost of the catalog).
+2. Run `get_skill` with `name: release-notes` → the full SKILL.md body, the supporting-file list,
+   and the folder's SHA-256.
+3. Run `get_skill_file` with `path: references/style.md` → the file inline. Try `path: ../../README.md`
+   to see path validation reject it.
+4. **Resources** tab → the same skill as `skill://` resources plus the `skill://index.json` catalog
+   (delivery mode B).
+5. **Hot reload**: edit `docs/skills/release-notes/SKILL.md`, save, re-run `get_skill` — new body,
+   new hash, no restart. Sanity check on connect: the server's stderr shows
+   `skill catalog rebuilt: 1 skill(s) served (release-notes)`; an empty `list_skills` means the
+   server loaded a different config (see step 2's `-e` note).
+
+To use skills from an agent instead, register the orchestrator with your MCP host
+([see above](#register-the-orchestrator-with-an-agent)) with `MCP_ORCHESTRATOR_CONFIG` pointing at
+a config with a `skills` section, then ask for something the skill's `description` matches — the
+agent chains `list_skills` → `get_skill` → `get_skill_file` on its own. Note that the tools
+(mode A) are what agents use in practice; MCP *resources* (mode B) are surfaced to the model by
+few hosts today (in Claude Code, type `@` to attach one manually).
+
+### Configuration
+
 ```jsonc
 "skills": {
   "enabled": true,
@@ -910,13 +950,34 @@ per skill; full content loads only on demand. Skills are **served as files, neve
 
 **Sources.** `directory` scans recursively for `SKILL.md` files (a `FileSystemWatcher` picks up
 edits live). `git` shallow-clones via the `git` CLI into `~/.mcpOrchestrator/skills-cache/` and
-re-fetches every `pollSeconds` (default 300); `token` is sent as an Authorization header, never
-put on the URL or logged. `http` fetches a discovery index
+re-fetches every `pollSeconds` (default 300) — only the latest files, no history, and the cache
+is a disposable mirror that is hard-reset on every refresh. `http` fetches a discovery index
 (the [Agent Skills discovery format](https://agentskills.io); entries may add a `files` array to
 enumerate supporting files — plain HTTP has no directory listing). Invalid skills are logged and
 skipped, never fatal; on a name collision the earlier source in config order wins. A skills
 section in a [central config](#central-configuration) works too (`directory` sources with
 machine-local placeholders are rejected there), and config edits hot-reload like everything else.
+
+**Which source type do I want?** `directory` for skills on this machine (simplest — start here).
+`git` for a team-shared skills repo: someone merges a skill improvement, and every orchestrator
+polling that repo serves it within `pollSeconds` — review and versioning come free via normal
+PRs. `http` for published skill sets behind a plain URL. All three end up in the same in-memory
+snapshots and are served identically.
+
+**Private git repos — do I need a token?** Only if `git clone <url>` wouldn't already work on
+that machine:
+
+1. **Public repo** → no token, just the URL.
+2. **Your dev machine with stored git credentials** (e.g. Git Credential Manager) → no token; the
+   orchestrator shells out to your `git`, so its credentials are used. Test: if `git clone <url>`
+   succeeds in a terminal, the same URL works in the config.
+3. **No stored credentials** (CI, servers, a shared central config) → create a read-only token
+   (GitHub: Settings → Developer settings → *Fine-grained personal access token*, scoped to the
+   skills repo, permission **Contents: Read-only**), set it as an environment variable (e.g. in
+   the orchestrator's `env` block: `"SKILLS_GIT_TOKEN": "github_pat_…"`), and reference it as
+   `"token": "${SKILLS_GIT_TOKEN}"`. The config file stays free of secrets — each machine
+   resolves its own variable. The token is sent as an `Authorization` header, never put on the
+   URL or logged; if it expires, the last fetched copy keeps serving with a warning in the log.
 
 **Delivery mode A — catalog tools** (`catalogTools`, default on, works with every MCP client):
 `list_skills` (names + one-line descriptions) → `get_skill` (the SKILL.md body + file list) →
