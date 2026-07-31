@@ -54,5 +54,26 @@
       ],
       "workingDirectory": "${SOLUTION_DIR}"
     }
-  ]
+  ],
+  "//skills": "Agent Skills (SKILL.md folders) served by the orchestrator itself — compact list_skills catalog plus skill:// resources. See the README's Skills section.",
+  "skills": {
+    "enabled": true,
+    "sources": [
+      {
+        "id": "repo-skills",
+        "type": "directory",
+        "path": "${SOLUTION_DIR}/docs/skills"
+      }
+    ],
+    "delivery": {
+      "catalogTools": true,
+      "perSkillTools": false,
+      "resources": true
+    },
+    "governance": {
+      "allowedSkills": [],
+      "deniedSkills": [],
+      "integrity": { "mode": "warn", "sha256": {} }
+    }
+  }
 }

@@ -21,14 +21,25 @@ public sealed partial class CapabilityCatalog : ICapabilityCatalog
     /// </summary>
     public string? SourcePath { get; }
 
+    /// <summary>
+    /// The resolved <c>skills</c> section this config carries, or <c>null</c> when absent or
+    /// disabled. Rides on the catalog so both load paths (local file and centrally served) hand
+    /// it to the skills subsystem through the same registry swap.
+    /// </summary>
+    internal Skills.SkillsOptions? Skills { get; }
+
     private readonly Dictionary<string, CapabilityDescriptor> _byName;
 
     /// <summary>Private constructor; build instances via <see cref="Load"/> or <see cref="FromDescriptors"/>.</summary>
-    private CapabilityCatalog(IReadOnlyList<CapabilityDescriptor> capabilities, string? sourcePath = null)
+    private CapabilityCatalog(
+        IReadOnlyList<CapabilityDescriptor> capabilities,
+        string? sourcePath = null,
+        Skills.SkillsOptions? skills = null)
     {
         Capabilities = capabilities;
         Names = capabilities.Select(c => c.Name).ToArray();
         SourcePath = sourcePath;
+        Skills = skills;
         _byName = capabilities.ToDictionary(c => c.Name, StringComparer.OrdinalIgnoreCase);
     }
 
@@ -42,7 +53,10 @@ public sealed partial class CapabilityCatalog : ICapabilityCatalog
     /// or duplicate an earlier name (case-insensitive, first one wins). Exposed for tests.
     /// </summary>
     internal static CapabilityCatalog FromDescriptors(
-        IEnumerable<CapabilityDescriptor> capabilities, ILogger logger, string? sourcePath = null)
+        IEnumerable<CapabilityDescriptor> capabilities,
+        ILogger logger,
+        string? sourcePath = null,
+        Skills.SkillsOptions? skills = null)
     {
         var kept = new List<CapabilityDescriptor>();
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -76,7 +90,7 @@ public sealed partial class CapabilityCatalog : ICapabilityCatalog
             kept.Add(c);
         }
 
-        return new CapabilityCatalog(kept, sourcePath);
+        return new CapabilityCatalog(kept, sourcePath, skills);
     }
 
 
@@ -131,7 +145,9 @@ public sealed partial class CapabilityCatalog : ICapabilityCatalog
             .Where(c => c.Enabled)
             .Select(c => Resolve(c, placeholders, logger));
 
-        var catalog = FromDescriptors(resolved, logger, configPath);
+        var skills = McpOrchestrator.Orchestration.Skills.SkillsConfigResolver.Resolve(
+            config?.Skills, placeholders, forbidLocalPlaceholders: false, logger);
+        var catalog = FromDescriptors(resolved, logger, configPath, skills);
 
         logger.LogInformation(
             "Loaded {Count} capability/capabilities from {ConfigPath}: {Names}",
@@ -250,7 +266,10 @@ public sealed partial class CapabilityCatalog : ICapabilityCatalog
             }
         }
 
-        return new ReloadedConfig(FromDescriptors(all, logger, sourceLabel), all);
+        var skills = McpOrchestrator.Orchestration.Skills.SkillsConfigResolver.Resolve(
+            config?.Skills, builtinPlaceholders, forbidLocalPlaceholders, logger);
+
+        return new ReloadedConfig(FromDescriptors(all, logger, sourceLabel, skills), all);
     }
 
     /// <summary>
@@ -389,8 +408,9 @@ public sealed partial class CapabilityCatalog : ICapabilityCatalog
         return null;
     }
 
-    /// <summary>Replaces a <c>${VAR}</c> placeholder with a built-in value, then an env var; leaves unknowns as-is.</summary>
-    private static string Substitute(string value, IReadOnlyDictionary<string, string> placeholders, ILogger logger)
+    /// <summary>Replaces a <c>${VAR}</c> placeholder with a built-in value, then an env var; leaves unknowns as-is.
+    /// Internal so the skills config resolver applies identical substitution semantics.</summary>
+    internal static string Substitute(string value, IReadOnlyDictionary<string, string> placeholders, ILogger logger)
     {
         if (string.IsNullOrEmpty(value) || !value.Contains("${", StringComparison.Ordinal))
         {

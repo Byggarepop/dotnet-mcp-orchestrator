@@ -100,6 +100,21 @@ public static class OrchestratorHost
             builder.Services.AddHostedService<Orchestration.Reload.CentralConfigService>();
         }
 
+        // Skills subsystem (always registered, inert without a `skills` config section):
+        //  - SkillRegistry: hot-swappable holder of the served skill catalog.
+        //  - SkillsReloadService: builds/refreshes skills from the configured sources; also the
+        //    ISkillsReloadSink the config reload pipeline hands a changed `skills` section to.
+        // The tools/resource handlers are registered unconditionally so a skills section added
+        // by a config reload (or arriving with the central config) starts serving mid-session
+        // without a restart; with no section they answer with an empty catalog. Registered before
+        // CapabilityAdvertisementService so the advertisement sees the loaded skill catalog.
+        builder.Services.AddSingleton<Orchestration.Skills.SkillRegistry>();
+        builder.Services.AddSingleton<Orchestration.Skills.SkillsReloadService>();
+        builder.Services.AddSingleton<Orchestration.Skills.ISkillsReloadSink>(
+            sp => sp.GetRequiredService<Orchestration.Skills.SkillsReloadService>());
+        builder.Services.AddHostedService(
+            sp => sp.GetRequiredService<Orchestration.Skills.SkillsReloadService>());
+
         // Session-start advertisement: pushes the catalog (every name + summary, plus promoted
         // capabilities' full instructions) into the initialize handshake's server instructions
         // and the list_capabilities tool description. Registration order is load-bearing: after
@@ -128,7 +143,11 @@ public static class OrchestratorHost
             .WithStdioServerTransport()
             // Register the meta-tools via the generic overload (source-generated, Native-AOT safe)
             // rather than the reflection-based WithToolsFromAssembly.
-            .WithTools<Tools.OrchestratorTool>();
+            .WithTools<Tools.OrchestratorTool>()
+            // Skills delivery mode A (catalog tools) and mode B (SEP-2640 skill:// resources).
+            .WithTools<Tools.SkillsTool>()
+            .WithListResourcesHandler(Orchestration.Skills.SkillResourceHandlers.ListAsync)
+            .WithReadResourceHandler(Orchestration.Skills.SkillResourceHandlers.ReadAsync);
 
         var app = builder.Build();
 

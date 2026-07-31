@@ -52,12 +52,13 @@ the agent sends. The agent does all the thinking. The orchestrator is therefore 
     - [Proactive capabilities (`promote`)](#proactive-capabilities-promote)
     - [Hot reload](#hot-reload)
     - [Central configuration](#central-configuration)
-12. [Testing](#testing)
-13. [Troubleshooting & pitfalls](#troubleshooting--pitfalls)
-14. [Security](#security)
-15. [Extending](#extending)
-16. [Project layout](#project-layout)
-17. [Debugging](#debugging)
+12. [Agent Skills (skills-over-MCP)](#agent-skills-skills-over-mcp)
+13. [Testing](#testing)
+14. [Troubleshooting & pitfalls](#troubleshooting--pitfalls)
+15. [Security](#security)
+16. [Extending](#extending)
+17. [Project layout](#project-layout)
+18. [Debugging](#debugging)
 
 ---
 
@@ -881,6 +882,23 @@ startup the chosen path is printed to stderr. To change or disable it:
 
 ---
 
+## Agent Skills (skills-over-MCP)
+
+The orchestrator can serve **[Agent Skills](https://agentskills.io/specification)** (SKILL.md
+folders) from local directories, git repositories, or an HTTP(S) index — a compact `list_skills`
+catalog up front, full skill content only on demand, with allow/deny lists, SHA-256 integrity
+pinning, and audit logging. Skills are served as files, never executed.
+
+Everything else lives in **[docs/skills.md](https://github.com/Byggarepop/dotnet-mcp-orchestrator/blob/main/docs/skills.md)**:
+
+- [Try it in five minutes](https://github.com/Byggarepop/dotnet-mcp-orchestrator/blob/main/docs/skills.md#try-it-in-five-minutes) — Inspector walkthrough against the bundled sample skill
+- [Configuration](https://github.com/Byggarepop/dotnet-mcp-orchestrator/blob/main/docs/skills.md#configuration) — the `skills` section, all fields
+- [Sources](https://github.com/Byggarepop/dotnet-mcp-orchestrator/blob/main/docs/skills.md#sources) — directory vs git vs http, and [when a private repo needs a token](https://github.com/Byggarepop/dotnet-mcp-orchestrator/blob/main/docs/skills.md#private-git-repos--do-i-need-a-token)
+- [Delivery modes](https://github.com/Byggarepop/dotnet-mcp-orchestrator/blob/main/docs/skills.md#delivery-modes) — catalog tools (works everywhere) and SEP-2640 `skill://` resources (pending proposal, status note included)
+- [Governance](https://github.com/Byggarepop/dotnet-mcp-orchestrator/blob/main/docs/skills.md#governance) and [how it works](https://github.com/Byggarepop/dotnet-mcp-orchestrator/blob/main/docs/skills.md#how-it-works)
+
+---
+
 ## Testing
 
 ```bash
@@ -952,6 +970,8 @@ McpOrchestrator/                         The orchestrator tool package
     DownstreamConnectionManager.cs       MCP client: lazy connect, cache, timeouts, proxy, dispose
     ToolPayloads.cs                      Pure argument/result conversions (unit-tested)
     RoutingModels.cs                     DTOs returned to the agent (+ JSON options)
+    Skills/                              Agent Skills: sources (directory/git/http), governance,
+                                         hot reload, SEP-2640 skill:// resources (see Sep2640Conventions.cs)
 
 McpOrchestrator.DemoMcp/                 Sample downstream MCP (personas: jira / codegen / diag)
 McpOrchestrator.SmokeTest/               Console MCP client that drives the orchestrator

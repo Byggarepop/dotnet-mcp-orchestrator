@@ -41,13 +41,15 @@ await using var client = await McpClient.CreateAsync(transport);
 var tools = await client.ListToolsAsync(new RequestOptions());
 Console.WriteLine($"\nOrchestrator exposes: {string.Join(", ", tools.Select(t => t.Name))}");
 
-// CI/AOT smoke: confirm the (native) binary starts, serves exactly the 3 meta-tools, and can run
-// one — list_capabilities, which exercises the source-generated JSON path that AOT is sensitive to.
+// CI/AOT smoke: confirm the (native) binary starts, serves exactly the expected tool surface
+// (3 meta-tools + 3 skills catalog tools), and can run one — list_capabilities, which exercises
+// the source-generated JSON path that AOT is sensitive to.
 // Needs no downstream servers, so it's a fast, reliable gate. Exits with a pass/fail code.
 if (args.Contains("--check-tools"))
 {
     var names = tools.Select(t => t.Name).ToHashSet();
-    string[] expected = ["list_capabilities", "discover_tools", "route"];
+    string[] expected =
+        ["list_capabilities", "discover_tools", "route", "list_skills", "get_skill", "get_skill_file"];
     var toolsOk = tools.Count == expected.Length && expected.All(names.Contains);
 
     var listResult = await client.CallToolAsync("list_capabilities", new Dictionary<string, object?>());
@@ -56,7 +58,7 @@ if (args.Contains("--check-tools"))
 
     var ok = toolsOk && jsonOk;
     Console.WriteLine(ok
-        ? "OK: serves the 3 tools and list_capabilities serialized correctly."
+        ? "OK: serves the 6 tools and list_capabilities serialized correctly."
         : $"FAIL: toolsOk={toolsOk} jsonOk={jsonOk}");
     return ok ? 0 : 1;
 }

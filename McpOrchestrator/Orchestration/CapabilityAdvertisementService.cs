@@ -26,15 +26,19 @@ internal sealed class CapabilityAdvertisementService : IHostedService
     private readonly IOptions<McpServerOptions> _serverOptions;
     private readonly CapabilityRegistry _registry;
     private readonly ILogger<CapabilityAdvertisementService> _logger;
+    private readonly Skills.SkillRegistry? _skills;
 
+    /// <param name="skills">Skill registry for the skills catalog line; null (e.g. in tests) omits it.</param>
     public CapabilityAdvertisementService(
         IOptions<McpServerOptions> serverOptions,
         CapabilityRegistry registry,
-        ILogger<CapabilityAdvertisementService> logger)
+        ILogger<CapabilityAdvertisementService> logger,
+        Skills.SkillRegistry? skills = null)
     {
         _serverOptions = serverOptions;
         _registry = registry;
         _logger = logger;
+        _skills = skills;
     }
 
     public Task StartAsync(CancellationToken cancellationToken)
@@ -48,7 +52,28 @@ internal sealed class CapabilityAdvertisementService : IHostedService
     /// <summary>Applies the advertisement to the given options (test seam).</summary>
     internal void Apply(McpServerOptions options, IReadOnlyList<CapabilityDescriptor> capabilities)
     {
-        options.ServerInstructions = CapabilityAdvertisement.BuildServerInstructions(capabilities, out var overBudget);
+        var instructions = CapabilityAdvertisement.BuildServerInstructions(capabilities, out var overBudget);
+
+        // One line for the skill catalog when skills are loaded (SkillsReloadService starts
+        // before this service, so the registry is populated by now). Appended only when it fits
+        // the same render budget the capability block honors; the catalog stays reachable via
+        // list_skills either way.
+        var skillCount = _skills?.Current.Skills.Count ?? 0;
+        if (skillCount > 0)
+        {
+            // With no capability block the skills line stands alone (minus its leading newline).
+            var skillLine = $"\n- skills: {skillCount} agent skill(s); call list_skills for the catalog";
+            if ((instructions?.Length ?? 0) + skillLine.Length <= CapabilityAdvertisement.MaxTotalInstructionsChars)
+            {
+                instructions = instructions is null ? skillLine.TrimStart('\n') : instructions + skillLine;
+            }
+            else
+            {
+                _logger.LogWarning("skills advertisement line omitted: instructions budget exhausted");
+            }
+        }
+
+        options.ServerInstructions = instructions;
 
         if (options.ToolCollection is { } tools && tools.TryGetPrimitive("list_capabilities", out var tool))
         {

@@ -6,8 +6,9 @@ namespace McpOrchestrator.Tests;
 /// <summary>What the test server answers with. ETag, when set, is sent as a response header.</summary>
 internal sealed record ResponseSpec(int Status, string Body = "", string ContentType = "application/json", string? ETag = null);
 
-/// <summary>One received request's conditional/auth headers, as the trigger sent them.</summary>
-internal sealed record ReceivedRequest(string? IfNoneMatch, string? IfModifiedSince, string? Authorization);
+/// <summary>One received request's conditional/auth headers, as the trigger sent them.
+/// <see cref="Path"/> lets multi-path tests (e.g. a skills index plus its files) route per URL.</summary>
+internal sealed record ReceivedRequest(string? IfNoneMatch, string? IfModifiedSince, string? Authorization, string? Path = null);
 
 /// <summary>
 /// A tiny local <see cref="HttpListener"/> standing in for the central config host — no external
@@ -73,7 +74,8 @@ internal sealed class TestConfigServer : IDisposable
             var received = new ReceivedRequest(
                 context.Request.Headers["If-None-Match"],
                 context.Request.Headers["If-Modified-Since"],
-                context.Request.Headers["Authorization"]);
+                context.Request.Headers["Authorization"],
+                context.Request.Url?.AbsolutePath);
             lock (_requests)
             {
                 _requests.Add(received);
