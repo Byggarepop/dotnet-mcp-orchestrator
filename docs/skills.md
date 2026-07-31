@@ -7,8 +7,7 @@ HTTP(S) index. Same design principle as the rest of the tool: the catalog costs 
 per skill; full content loads only on demand. Skills are **served as files, never executed**.
 
 Contents:
-[Try it in five minutes](#try-it-in-five-minutes) ·
-[Using skills from an agent](#using-skills-from-an-agent) ·
+[Quick start](#quick-start) ·
 [Configuration](#configuration) ·
 [Sources](#sources) ·
 [Private git repos](#private-git-repos--do-i-need-a-token) ·
@@ -16,45 +15,35 @@ Contents:
 [Governance](#governance) ·
 [How it works](#how-it-works)
 
-## Try it in five minutes
+## Quick start
 
-The repo ships a sample skill ([`docs/skills/release-notes/`](skills/release-notes/)) already
-wired into `orchestrator.config.sample.json`, so from a fresh clone:
+Skills are used *by the agent* — you write a folder, the agent finds and follows it. Three steps:
 
-```bash
-# 1. Build
-dotnet build McpOrchestrator.slnx -c Release
+1. **Write a skill**: a folder whose name matches the frontmatter `name`, containing a `SKILL.md`
+   with a `name`, a `description` (this is what the agent matches tasks against — make it say
+   *when* to use the skill), and the instructions as the markdown body. Optional supporting files
+   go in `references/`, `scripts/`, `assets/`. A complete example:
+   [`docs/skills/release-notes/`](skills/release-notes/).
+2. **Point the orchestrator at it** in `orchestrator.config.json`:
 
-# 2. Open the MCP Inspector against the orchestrator (pass the config via -e; the
-#    Inspector does NOT forward your shell's environment to the server it spawns)
-npx @modelcontextprotocol/inspector \
-  -e MCP_ORCHESTRATOR_CONFIG=<repo>/McpOrchestrator/orchestrator.config.sample.json \
-  dotnet run --project <repo>/McpOrchestrator --no-build -c Release
-```
+   ```jsonc
+   "skills": {
+     "sources": [{ "id": "local", "type": "directory", "path": "C:/my-skills" }]
+   }
+   ```
 
-In the Inspector UI:
+   Save — the running orchestrator hot-reloads it, and later edits to skill files are picked up
+   live as well.
+3. **Let the agent use it.** Nothing to trigger manually: the session greeting mentions the skill
+   catalog, and when a task matches a skill's description the agent chains
+   `list_skills` → `get_skill` → `get_skill_file` on its own, loading full content only when
+   needed.
 
-1. **Tools** tab → run `list_skills` → one entry: `release-notes` (name + one line — the whole
-   upfront cost of the catalog).
-2. Run `get_skill` with `name: release-notes` → the full SKILL.md body, the supporting-file list,
-   and the folder's SHA-256.
-3. Run `get_skill_file` with `path: references/style.md` → the file inline. Try `path: ../../README.md`
-   to see path validation reject it.
-4. **Resources** tab → the same skill as `skill://` resources plus the `skill://index.json` catalog
-   (delivery mode B).
-5. **Hot reload**: edit `docs/skills/release-notes/SKILL.md`, save, re-run `get_skill` — new body,
-   new hash, no restart. Sanity check on connect: the server's stderr shows
-   `skill catalog rebuilt: 1 skill(s) served (release-notes)`; an empty `list_skills` means the
-   server loaded a different config (see step 2's `-e` note).
-
-## Using skills from an agent
-
-Register the orchestrator with your MCP host
-([how](../McpOrchestrator/README.md#register-the-orchestrator-with-an-agent)) with
-`MCP_ORCHESTRATOR_CONFIG` pointing at a config with a `skills` section, then ask for something the
-skill's `description` matches — the agent chains `list_skills` → `get_skill` → `get_skill_file` on
-its own. Note that the tools (mode A) are what agents use in practice; MCP *resources* (mode B)
-are surfaced to the model by few hosts today (in Claude Code, type `@` to attach one manually).
+**Verifying without an agent** (optional): the MCP Inspector can drive the same tools by hand —
+`npx @modelcontextprotocol/inspector -e MCP_ORCHESTRATOR_CONFIG=<path-to-config> mcp-orchestrator`
+(the `-e` matters: the Inspector does not forward your shell's environment to the server it
+spawns). On connect, the server's stderr shows `skill catalog rebuilt: N skill(s) served (…)`; an
+empty `list_skills` result means the server loaded a different config than you intended.
 
 ## Configuration
 
@@ -119,7 +108,9 @@ Only if `git clone <url>` wouldn't already work on that machine:
 `perSkillTools` (default **off**) additionally exposes one tool per skill — that inflates every
 session's context, which is exactly what this tool exists to avoid; prefer the catalog trio.
 
-**Mode B — resources** (`resources`, default on): each skill file is an MCP Resource at
+**Mode B — resources** (`resources`, default on): in practice mode A is what agents actually use —
+few MCP hosts surface resources to the model today (in Claude Code, type `@` to attach one
+manually) — so treat this mode as forward-compatibility. Each skill file is an MCP Resource at
 `skill://<name>/<path>`, plus a `skill://index.json` catalog resource, following
 **[SEP-2640](https://github.com/modelcontextprotocol/modelcontextprotocol/pull/2640)**. SEP-2640
 is a *pending proposal* still under review; every URI/format convention is isolated in
