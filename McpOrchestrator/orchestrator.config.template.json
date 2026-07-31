@@ -25,6 +25,12 @@
 //
 // The single example below is DISABLED. As written it launches the official filesystem MCP server
 // (via npx) scoped to this file's folder. Enable it, or replace it with your own server.
+//
+// Optional "skills" section: serve Agent Skills (folders with a SKILL.md) to the agent — a
+// compact list_skills catalog plus skill:// resources, loaded from local folders, git repos
+// (private via "token"), or an HTTP(S) discovery index ("indexUrl"). The example below is
+// DISABLED; point "path" at a folder of skills to try it. Governance: allowedSkills /
+// deniedSkills (deny wins) and per-skill sha256 pins with "mode": "warn" or "block".
 {
   "capabilities": [
     {
@@ -36,5 +42,11 @@
       "command": "npx",
       "args": ["-y", "@modelcontextprotocol/server-filesystem", "${CONFIG_DIR}"]
     }
-  ]
+  ],
+  "skills": {
+    "enabled": false,
+    "sources": [
+      { "id": "my-skills", "type": "directory", "path": "${CONFIG_DIR}/skills" }
+    ]
+  }
 }

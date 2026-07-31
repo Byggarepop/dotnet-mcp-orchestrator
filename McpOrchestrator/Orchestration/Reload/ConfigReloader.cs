@@ -18,6 +18,7 @@ internal sealed class ConfigReloader
     private readonly CapabilityRegistry _registry;
     private readonly IDownstreamConnectionLifecycle _connections;
     private readonly ILogger _logger;
+    private readonly Skills.ISkillsReloadSink? _skills;
 
     // Reloads are serialized; readers never block (they read the registry's volatile snapshot).
     private readonly SemaphoreSlim _reloadGate = new(1, 1);
@@ -31,12 +32,14 @@ internal sealed class ConfigReloader
         IConfigSource source,
         CapabilityRegistry registry,
         IDownstreamConnectionLifecycle connections,
-        ILogger logger)
+        ILogger logger,
+        Skills.ISkillsReloadSink? skills = null)
     {
         _source = source;
         _registry = registry;
         _connections = connections;
         _logger = logger;
+        _skills = skills;
         _lastEntries = registry.Current.Capabilities;
     }
 
@@ -85,6 +88,13 @@ internal sealed class ConfigReloader
             foreach (var name in diff.Removed.Concat(diff.Restarted))
             {
                 await _connections.InvalidateAsync(name, cancellationToken);
+            }
+
+            if (_skills is not null)
+            {
+                // The skills section rides on the catalog; hand it over after the capability swap
+                // so a reload that changes both is never observed half-applied. The sink never throws.
+                await _skills.ApplyAsync(next.Catalog.Skills, cancellationToken);
             }
 
             _logger.LogInformation(

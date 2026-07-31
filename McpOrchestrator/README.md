@@ -52,12 +52,13 @@ the agent sends. The agent does all the thinking. The orchestrator is therefore 
     - [Proactive capabilities (`promote`)](#proactive-capabilities-promote)
     - [Hot reload](#hot-reload)
     - [Central configuration](#central-configuration)
-12. [Testing](#testing)
-13. [Troubleshooting & pitfalls](#troubleshooting--pitfalls)
-14. [Security](#security)
-15. [Extending](#extending)
-16. [Project layout](#project-layout)
-17. [Debugging](#debugging)
+12. [Agent Skills (skills-over-MCP)](#agent-skills-skills-over-mcp)
+13. [Testing](#testing)
+14. [Troubleshooting & pitfalls](#troubleshooting--pitfalls)
+15. [Security](#security)
+16. [Extending](#extending)
+17. [Project layout](#project-layout)
+18. [Debugging](#debugging)
 
 ---
 
@@ -881,6 +882,66 @@ startup the chosen path is printed to stderr. To change or disable it:
 
 ---
 
+## Agent Skills (skills-over-MCP)
+
+The orchestrator can serve **[Agent Skills](https://agentskills.io/specification)** — folders with
+a `SKILL.md` (YAML frontmatter: `name`, `description`; markdown body: the instructions) plus
+optional `references/`, `scripts/`, and `assets/` — from local folders, git repositories, or an
+HTTP(S) index. Same design principle as the rest of the tool: the catalog costs a name + one line
+per skill; full content loads only on demand. Skills are **served as files, never executed**.
+
+```jsonc
+"skills": {
+  "enabled": true,
+  "sources": [
+    { "id": "local",  "type": "directory", "path": "${CONFIG_DIR}/skills" },
+    { "id": "team",   "type": "git",  "url": "https://github.com/org/skills.git",
+      "ref": "main", "token": "${SKILLS_GIT_TOKEN}", "pollSeconds": 300 },
+    { "id": "cdn",    "type": "http", "indexUrl": "https://skills.example.com/index.json",
+      "authorization": "${SKILLS_HTTP_AUTH}" }
+  ],
+  "delivery": { "catalogTools": true, "perSkillTools": false, "resources": true },
+  "governance": {
+    "allowedSkills": [], "deniedSkills": [],
+    "integrity": { "mode": "warn", "sha256": { "some-skill": "9f2c…" } }
+  }
+}
+```
+
+**Sources.** `directory` scans recursively for `SKILL.md` files (a `FileSystemWatcher` picks up
+edits live). `git` shallow-clones via the `git` CLI into `~/.mcpOrchestrator/skills-cache/` and
+re-fetches every `pollSeconds` (default 300); `token` is sent as an Authorization header, never
+put on the URL or logged. `http` fetches a discovery index
+(the [Agent Skills discovery format](https://agentskills.io); entries may add a `files` array to
+enumerate supporting files — plain HTTP has no directory listing). Invalid skills are logged and
+skipped, never fatal; on a name collision the earlier source in config order wins. A skills
+section in a [central config](#central-configuration) works too (`directory` sources with
+machine-local placeholders are rejected there), and config edits hot-reload like everything else.
+
+**Delivery mode A — catalog tools** (`catalogTools`, default on, works with every MCP client):
+`list_skills` (names + one-line descriptions) → `get_skill` (the SKILL.md body + file list) →
+`get_skill_file` (one supporting file; strict path validation, text inline / binary as base64).
+`perSkillTools` (default **off**) additionally exposes one tool per skill — that inflates every
+session's context, which is exactly what this tool exists to avoid; prefer the catalog trio.
+
+**Delivery mode B — resources** (`resources`, default on): each skill file is an MCP Resource at
+`skill://<name>/<path>`, plus a `skill://index.json` catalog resource, following
+**[SEP-2640](https://github.com/modelcontextprotocol/modelcontextprotocol/pull/2640)**. SEP-2640
+is a *pending proposal* still under review; every URI/format convention is isolated in
+`Sep2640Conventions.cs` so a spec change is a small diff.
+
+**Governance.** `deniedSkills` beats `allowedSkills` (empty allow-list = allow all). Integrity
+pinning: map a skill name to the SHA-256 of its folder content — on mismatch `warn` (serve + log,
+default) or `block` (drop). The hash is deterministic: files sorted by `/`-normalized relative
+path, each hashed as `path 0x00 content 0x00` into one SHA-256 (see `SkillHasher` for a shell
+one-liner). Every served skill body or file is audit-logged (skill, file, hash, source, delivery
+mode) to stderr and the [log file](#logs).
+
+A minimal example skill lives at
+[`docs/skills/release-notes/`](https://github.com/Byggarepop/dotnet-mcp-orchestrator/tree/main/docs/skills/release-notes).
+
+---
+
 ## Testing
 
 ```bash
@@ -952,6 +1013,8 @@ McpOrchestrator/                         The orchestrator tool package
     DownstreamConnectionManager.cs       MCP client: lazy connect, cache, timeouts, proxy, dispose
     ToolPayloads.cs                      Pure argument/result conversions (unit-tested)
     RoutingModels.cs                     DTOs returned to the agent (+ JSON options)
+    Skills/                              Agent Skills: sources (directory/git/http), governance,
+                                         hot reload, SEP-2640 skill:// resources (see Sep2640Conventions.cs)
 
 McpOrchestrator.DemoMcp/                 Sample downstream MCP (personas: jira / codegen / diag)
 McpOrchestrator.SmokeTest/               Console MCP client that drives the orchestrator

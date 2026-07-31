@@ -76,6 +76,13 @@ public sealed class OrchestratorConfig
 {
     /// <summary>The downstream MCP servers this orchestrator can reach.</summary>
     public List<CapabilityDescriptor> Capabilities { get; set; } = new();
+
+    /// <summary>
+    /// Agent Skills served by the orchestrator itself (SKILL.md folders from configured
+    /// sources). <c>null</c> when the config has no <c>skills</c> section — the skills
+    /// subsystem then stays inert.
+    /// </summary>
+    public Skills.SkillsOptions? Skills { get; set; }
 }
 
 /// <summary>

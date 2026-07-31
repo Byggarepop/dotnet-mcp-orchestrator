@@ -35,5 +35,17 @@
       "args": ["tool", "execute", "Unwritten", "--yes", "--", "mcp"],
       "connectTimeoutSeconds": 120
     }
-  ]
+  ],
+  "//skills": "A central catalog can also serve Agent Skills. Same machine-portability rule: directory sources with ${CONFIG_DIR}/${SOLUTION_DIR} are rejected — use git or http sources (secrets via ${ENV_VAR}, resolved on each consuming machine).",
+  "skills": {
+    "enabled": true,
+    "sources": [
+      {
+        "id": "example-skills",
+        "type": "git",
+        "url": "https://github.com/Byggarepop/dotnet-mcp-orchestrator.git",
+        "ref": "main"
+      }
+    ]
+  }
 }

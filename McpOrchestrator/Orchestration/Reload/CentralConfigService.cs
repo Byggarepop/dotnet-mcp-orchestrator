@@ -18,17 +18,20 @@ internal sealed class CentralConfigService : IHostedService, IDisposable
     private readonly ILogger<CentralConfigService> _logger;
     private readonly CentralConfigCache _cache;
     private readonly HttpMessageHandler? _handler;
+    private readonly Skills.ISkillsReloadSink? _skills;
     private HttpConfigPollTrigger? _trigger;
 
     /// <param name="handler">HTTP handler override for tests; null uses a real one.</param>
     /// <param name="cache">Cache override for tests; null uses <c>~/.mcpOrchestrator</c>.</param>
+    /// <param name="skills">Skills sink; null (e.g. in tests) leaves skill reloads unwired.</param>
     public CentralConfigService(
         CentralConfigOptions options,
         CapabilityRegistry registry,
         IDownstreamConnectionLifecycle connections,
         ILogger<CentralConfigService> logger,
         HttpMessageHandler? handler = null,
-        CentralConfigCache? cache = null)
+        CentralConfigCache? cache = null,
+        Skills.ISkillsReloadSink? skills = null)
     {
         _options = options;
         _registry = registry;
@@ -36,6 +39,7 @@ internal sealed class CentralConfigService : IHostedService, IDisposable
         _logger = logger;
         _handler = handler;
         _cache = cache ?? new CentralConfigCache();
+        _skills = skills;
     }
 
     public async Task StartAsync(CancellationToken cancellationToken)
@@ -84,7 +88,7 @@ internal sealed class CentralConfigService : IHostedService, IDisposable
         }
 
         var reloader = new ConfigReloader(
-            new CentralConfigSource(_options, _cache, _logger), _registry, _connections, _logger);
+            new CentralConfigSource(_options, _cache, _logger), _registry, _connections, _logger, _skills);
 
         var applied = await reloader.ReloadAsync(cancellationToken);
         if (applied is null)

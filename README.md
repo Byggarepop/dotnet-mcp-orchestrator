@@ -161,3 +161,7 @@ The agent now sees the three meta-tools and the flow is `list_capabilities` → 
 ## The three tools
 
 `list_capabilities` → `discover_tools` → **`route`** (you pick the tool and fill the arguments). The orchestrator is a **courier, not an interpreter**: it forwards exactly what the agent sends — the agent does the thinking. See the [full docs](https://github.com/Byggarepop/dotnet-mcp-orchestrator/blob/main/McpOrchestrator/README.md) for details.
+
+## Agent Skills
+
+The orchestrator can also serve **[Agent Skills](https://agentskills.io)** (SKILL.md folders) from local directories, git repositories (private via token), or an HTTP(S) index — with the same token discipline: a compact `list_skills` catalog up front, full skill content only on demand. Skills are also exposed as MCP Resources under `skill://` URIs per the pending [SEP-2640](https://github.com/modelcontextprotocol/modelcontextprotocol/pull/2640) proposal. Governance built in: allow/deny lists, SHA-256 integrity pinning (`warn`/`block`), and an audit log line for every served file. Skills are served as files, never executed. See the [skills section of the full docs](https://github.com/Byggarepop/dotnet-mcp-orchestrator/blob/main/McpOrchestrator/README.md#agent-skills-skills-over-mcp).
