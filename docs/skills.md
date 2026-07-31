@@ -15,6 +15,14 @@ Contents:
 [Governance](#governance) ·
 [How it works](#how-it-works)
 
+> **Agent-only, by design.** Skills served over the orchestrator are consumed by the *model*
+> through tools — they do **not** register as host-native skills. They won't appear in Claude
+> Code's `/skills` list, get no slash command, and won't pop up in any IDE skill picker: the
+> host just sees an MCP server with tools, and the agent discovers the catalog itself via
+> `list_skills`. If you want a skill as a native `/command` too, install it in the host's own
+> location (e.g. `~/.claude/skills/`) — syncing orchestrator-served skills into client-native
+> formats automatically is a planned follow-up.
+
 ## Quick start
 
 Skills are used *by the agent* — you write a folder, the agent finds and follows it. Three steps:

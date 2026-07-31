@@ -85,6 +85,8 @@ Point the orchestrator at the folder in `orchestrator.config.json`:
 
 Save — it hot-reloads. The agent now sees the skill's name + one-line description via `list_skills` and loads the full instructions only when a task calls for it. Skills can also come from a shared git repo or an HTTP index, with allow/deny lists and integrity pinning — see [docs/skills.md](https://github.com/Byggarepop/dotnet-mcp-orchestrator/blob/main/docs/skills.md).
 
+> Note: these skills are **for the agent only** — the model discovers and follows them through tools. They do not become host-native skills (no `/skills` listing or slash command in Claude Code, no IDE skill picker entry).
+
 ## Documentation
 
 Everything else lives in **[McpOrchestrator/README.md](https://github.com/Byggarepop/dotnet-mcp-orchestrator/blob/main/McpOrchestrator/README.md)** and **[docs/](https://github.com/Byggarepop/dotnet-mcp-orchestrator/tree/main/docs)**:
