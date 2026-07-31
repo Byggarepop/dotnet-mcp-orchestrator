@@ -7,6 +7,14 @@ All notable changes to this project are documented here. The format is based on
 The release workflow reads the section matching the tag (e.g. `## [0.1.0]` for tag `v0.1.0`) and
 uses it as the GitHub Release notes — so keep an entry per released version.
 
+## [Unreleased]
+
+### Added
+- A `publish-release` skill (`docs/skills/publish-release/`): the complete McpOrchestrator
+  release procedure as an Agent Skill — preconditions, the two-file bump PR, tagging, deploy
+  verification, and a reference file of real failure modes — so an agent can run a release
+  correctly without rediscovering the process.
+
 ## [0.5.0] - 2026-07-31
 
 ### Added
