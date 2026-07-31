@@ -8,12 +8,14 @@ namespace McpOrchestrator.Orchestration.Skills;
 /// </summary>
 /// <remarks>
 /// SEP-2640 (Skills Extension, modelcontextprotocol PR #2640) is a PENDING PROPOSAL, still in
-/// draft as of July 2026. This class implements the published draft from the
+/// draft as of July 2026. This class implements the published working-group draft from the
 /// <c>modelcontextprotocol/experimental-ext-skills</c> repo: each skill file is an MCP resource
 /// at <c>skill://&lt;name&gt;/&lt;file-path&gt;</c> and a well-known <c>skill://index.json</c>
-/// resource carries the catalog (Agent Skills discovery format). Review on the PR is trending
-/// toward dedicated <c>skills/list</c> / <c>skills/get</c> methods and scheme-agnostic URIs — if
-/// the SEP lands in that shape, this class is the whole diff.
+/// resource carries the catalog (Agent Skills discovery format). The head of the PR has since
+/// moved past that draft — it currently proposes dedicated <c>skills/list</c> /
+/// <c>skills/get</c> methods with per-file digest manifests instead of the index resource — and
+/// is still changing, so we deliberately stay on the published draft until the SEP merges. When
+/// it does, this class (plus <see cref="SkillResourceHandlers"/>) is the whole diff.
 /// </remarks>
 internal static class Sep2640Conventions
 {

@@ -930,6 +930,16 @@ session's context, which is exactly what this tool exists to avoid; prefer the c
 is a *pending proposal* still under review; every URI/format convention is isolated in
 `Sep2640Conventions.cs` so a spec change is a small diff.
 
+> **SEP-2640 status (July 2026).** This implementation tracks the *published working-group
+> draft* in [`modelcontextprotocol/experimental-ext-skills`](https://github.com/modelcontextprotocol/experimental-ext-skills)
+> (skills as plain Resources + a well-known `skill://index.json` catalog). The head of the
+> [SEP-2640 PR](https://github.com/modelcontextprotocol/modelcontextprotocol/pull/2640) has since
+> evolved past that draft — it currently proposes dedicated `skills/list` / `skills/get` methods
+> with per-file digest manifests instead of the index resource — and is still changing. We
+> deliberately stay on the published draft until the SEP merges, then adapt once. If you are
+> comparing behavior against the PR text, expect that difference. Mode A (the catalog tools) is
+> plain MCP and unaffected by any of this.
+
 **Governance.** `deniedSkills` beats `allowedSkills` (empty allow-list = allow all). Integrity
 pinning: map a skill name to the SHA-256 of its folder content — on mismatch `warn` (serve + log,
 default) or `block` (drop). The hash is deterministic: files sorted by `/`-normalized relative
