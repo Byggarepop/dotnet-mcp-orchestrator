@@ -7,6 +7,43 @@ All notable changes to this project are documented here. The format is based on
 The release workflow reads the section matching the tag (e.g. `## [0.1.0]` for tag `v0.1.0`) and
 uses it as the GitHub Release notes — so keep an entry per released version.
 
+## [Unreleased]
+
+### Added
+- Skills-over-MCP: the orchestrator can serve Agent Skills (SKILL.md folders per the
+  agentskills.io spec) from a new `skills` config section, in two delivery modes. Mode A
+  (default on) is the compact catalog tool trio — `list_skills` (names + one-line
+  descriptions), `get_skill` (the SKILL.md body + file list), `get_skill_file` (one
+  supporting file, strict path validation) — following the same progressive-disclosure
+  economics as the capability catalog; an optional `perSkillTools` flag (default off)
+  exposes one tool per skill. Mode B (default on) exposes each skill file as an MCP
+  Resource under `skill://<name>/<path>` plus a `skill://index.json` catalog per the
+  pending SEP-2640 proposal, with every SEP convention isolated in one class since the
+  proposal is still in draft. Skills load from three source types — `directory`
+  (recursive discovery, live file watcher), `git` (shallow clone via the git CLI,
+  private repos via a `token` sent as an Authorization header), and `http` (discovery
+  index) — into immutable in-memory snapshots, so serving never touches the origin and
+  path traversal is structurally impossible. Governance: `allowedSkills`/`deniedSkills`
+  (deny wins), deterministic per-skill SHA-256 integrity pinning with `warn`/`block`
+  modes, and an audit log line (skill, file, content hash, source, delivery mode) for
+  every served item. The skills section rides the existing hot-reload pipeline in both
+  file-watch and central-config modes; skill content reloads independently with atomic
+  catalog swap and last-known-good on failure. Skills are served as files, never
+  executed. Docs: `docs/skills.md`, a sample skill at `docs/skills/release-notes/`, and
+  skills sections in the sample/template/central example configs.
+
+### Changed
+- Upgraded the MCP C# SDK (`ModelContextProtocol` + `.Core`) from 1.4.0 to 2.0.0,
+  which targets the final 2026-07-28 MCP specification. Wire-compatible with older
+  peers; verified against the full test suite, a Native-AOT publish, and the native
+  smoke test.
+- READMEs reworked agent-first and slimmed to the short-README-linking-to-docs pattern:
+  the root README (also the NuGet package page) is now a compact landing page whose
+  quick start shows the generated `orchestrator.config.json` and includes an
+  "Add a skill" walkthrough; manual setup moved to `docs/manual-setup.md`, the skills
+  guide to `docs/skills.md`, and contributor documentation (build/test/extend/debug)
+  out of the user docs into `docs/development.md`.
+
 ## [0.4.1] - 2026-07-16
 
 ### Added
