@@ -10,6 +10,9 @@ uses it as the GitHub Release notes — so keep an entry per released version.
 ## [Unreleased]
 
 ### Added
+- A CLI reference (`docs/cli.md`): every command, flag, and environment variable of the tool —
+  the server, `init`, and `profile` — in one linkable page, generated from the commands'
+  built-in help.
 - A `publish-release` skill (`docs/skills/publish-release/`): the complete McpOrchestrator
   release procedure as an Agent Skill — preconditions, the two-file bump PR, tagging, deploy
   verification, and a reference file of real failure modes — so an agent can run a release
