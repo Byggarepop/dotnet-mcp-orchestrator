@@ -78,7 +78,19 @@ backs up the host config to `.bak`, and rewrites it to launch only the orchestra
 | `--force` | Overwrite an existing catalog file. |
 | `-h`, `--help` | Show the built-in help. |
 
-There is **no `--join` flag** — "joining" a shared catalog is `init --central-url <url>`.
+**Example — joining a team's shared catalog.** Your team serves one orchestrator config from an
+HTTPS URL; each developer runs, from the folder with their host config:
+
+```bash
+cd ~/my-project
+dotnet tool execute McpOrchestrator --yes init --central-url https://config.example.com/orchestrator.central.json
+```
+
+This rewrites the host config so the orchestrator reads its catalog from the URL
+(`MCP_ORCHESTRATOR_CONFIG_URL` in its `env` block); no local catalog is written and no servers
+are contacted. From then on, changes your team pushes to the served file are picked up
+automatically within the poll interval (default 300 s) — no restart. If the URL needs
+authentication, set `MCP_ORCHESTRATOR_CONFIG_AUTH` as an OS-level environment variable first.
 
 Exit codes: `0` success · `1` usage / IO / parse error.
 
