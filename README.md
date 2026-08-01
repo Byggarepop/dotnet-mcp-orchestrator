@@ -93,6 +93,7 @@ Everything else lives in **[McpOrchestrator/README.md](https://github.com/Byggar
 
 - [How it works & the three tools](https://github.com/Byggarepop/dotnet-mcp-orchestrator/blob/main/McpOrchestrator/README.md#how-it-works) — architecture and token scaling
 - [Profiling token economics](https://github.com/Byggarepop/dotnet-mcp-orchestrator/blob/main/McpOrchestrator/README.md#profiling-token-economics-profile) — the `profile` command in depth, trace mode, CI gating
+- [CLI reference](https://github.com/Byggarepop/dotnet-mcp-orchestrator/blob/main/docs/cli.md) — every command and flag: the server, `init`, and `profile`, plus all environment variables
 - [Manual setup](https://github.com/Byggarepop/dotnet-mcp-orchestrator/blob/main/docs/manual-setup.md) — the two config files `init` generates, written by hand
 - [Configuration reference](https://github.com/Byggarepop/dotnet-mcp-orchestrator/blob/main/McpOrchestrator/README.md#configuration-reference) — every field, placeholders, [proactive capabilities](https://github.com/Byggarepop/dotnet-mcp-orchestrator/blob/main/McpOrchestrator/README.md#proactive-capabilities-promote), [hot reload](https://github.com/Byggarepop/dotnet-mcp-orchestrator/blob/main/McpOrchestrator/README.md#hot-reload), [central (team) configuration](https://github.com/Byggarepop/dotnet-mcp-orchestrator/blob/main/McpOrchestrator/README.md#central-configuration)
 - [Agent Skills](https://github.com/Byggarepop/dotnet-mcp-orchestrator/blob/main/docs/skills.md) — sources (directory/git/HTTP), governance, delivery modes, how it works

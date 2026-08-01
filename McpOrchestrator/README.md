@@ -47,14 +47,15 @@ the agent sends. The agent does all the thinking. The orchestrator is therefore 
 7. [Register the orchestrator with an agent](#register-the-orchestrator-with-an-agent)
 8. [Packaging — install as a .NET tool](#packaging-install-as-a-net-tool)
 9. [Add a new downstream MCP](#add-a-new-downstream-mcp)
-10. [Configuration reference](#configuration-reference)
+10. [CLI reference](https://github.com/Byggarepop/dotnet-mcp-orchestrator/blob/main/docs/cli.md) — every command, flag, and environment variable
+11. [Configuration reference](#configuration-reference)
     - [Proactive capabilities (`promote`)](#proactive-capabilities-promote)
     - [Hot reload](#hot-reload)
     - [Central configuration](#central-configuration)
-11. [Agent Skills (skills-over-MCP)](#agent-skills-skills-over-mcp)
-12. [Troubleshooting & pitfalls](#troubleshooting--pitfalls)
-13. [Security](#security)
-14. [Development](#development) — building, testing, extending, debugging ([docs/development.md](https://github.com/Byggarepop/dotnet-mcp-orchestrator/blob/main/docs/development.md))
+12. [Agent Skills (skills-over-MCP)](#agent-skills-skills-over-mcp)
+13. [Troubleshooting & pitfalls](#troubleshooting--pitfalls)
+14. [Security](#security)
+15. [Development](#development) — building, testing, extending, debugging ([docs/development.md](https://github.com/Byggarepop/dotnet-mcp-orchestrator/blob/main/docs/development.md))
 
 ---
 
@@ -791,7 +792,7 @@ a central one, run `mcp-orchestrator init <host-config> --print-central` — it 
 generated catalog to stdout (no file writes, no host-config rewrite), ready to pipe into whatever
 serves the URL.
 
-**Joining the shared catalog (each developer).** One command, nothing installed — `cd` into the
+**Joining the shared catalog (each developer): `init --central-url`.** One command, nothing installed — `cd` into the
 project with your host config and run:
 
 ```bash
