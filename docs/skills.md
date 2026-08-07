@@ -116,13 +116,20 @@ Only if `git clone <url>` wouldn't already work on that machine:
 `perSkillTools` (default **off**) additionally exposes one tool per skill — that inflates every
 session's context, which is exactly what this tool exists to avoid; prefer the catalog trio.
 
-**Mode B — resources** (`resources`, default on): in practice mode A is what agents actually use —
-few MCP hosts surface resources to the model today (in Claude Code, type `@` to attach one
-manually) — so treat this mode as forward-compatibility. Each skill file is an MCP Resource at
+**Mode B — resources** (`resources`, default on): each skill file is an MCP Resource at
 `skill://<name>/<path>`, plus a `skill://index.json` catalog resource, following
 **[SEP-2640](https://github.com/modelcontextprotocol/modelcontextprotocol/pull/2640)**. SEP-2640
 is a *pending proposal* still under review; every URI/format convention is isolated in
-`Sep2640Conventions.cs` so a spec change is a small diff.
+`Sep2640Conventions.cs` so a spec change is a small diff. Few MCP hosts surface resources to the
+model directly (in Claude Code, type `@` to attach one manually), but this is the mode
+skill-aware frameworks consume: **[Microsoft Agent Framework](https://devblogs.microsoft.com/agent-framework/discover-agent-skills-from-mcp-servers-in-net/)**
+discovers skills through exactly this convention via
+`AgentSkillsProviderBuilder.UseMcpSkills(mcpClient)`. Verified against the orchestrator
+(August 2026, `Microsoft.Agents.AI.Mcp 1.17.0-alpha`): pointed at an orchestrator serving this
+repo's skills, the provider discovers every published skill as type `skill-md`, loads the
+SKILL.md bodies, lists `references/` files as skill resources, and injects the
+`<available_skills>` catalog plus its `load_skill` / `read_skill_resource` tools — no
+orchestrator-side changes needed.
 
 > **SEP-2640 status (July 2026).** This implementation tracks the *published working-group
 > draft* in [`modelcontextprotocol/experimental-ext-skills`](https://github.com/modelcontextprotocol/experimental-ext-skills)
