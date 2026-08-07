@@ -10,6 +10,23 @@ uses it as the GitHub Release notes — so keep an entry per released version.
 ## [Unreleased]
 
 ### Added
+- Actionable tool-call validation: every tools/call is checked against the target tool's input
+  schema before SDK argument binding, so a call with missing, unknown, or wrongly-typed
+  parameters returns an error naming the exact problem and the expected shape (e.g.
+  `Missing required parameter 'arguments' (received unknown parameter 'argz'). Expected shape:
+  {capability: string, tool: string, arguments: object}.`) instead of the SDK's generic
+  "An error occurred invoking 'route'". Predictable parameter-name synonyms are accepted as
+  aliases — `args`/`params`/`parameters`/`input`/`payload` for `arguments`, `tool_name` for
+  `tool`, `skill` for `name`, and similar — with the rewrite logged and a note appended to the
+  result so the model learns the canonical name.
+- The initialize-handshake server instructions now open with a literal `route` example —
+  `{"capability":"<name>","tool":"<tool>","arguments":{"key":"value"}}` — and an explicit note
+  that the parameter is `arguments`, not `args`.
+
+### Changed
+- A protocol-level failure from a proxied server is now relayed with attribution —
+  `Downstream capability '<name>' tool '<tool>' failed: <the downstream server's actual error
+  text>` — instead of the bare exception message.
 - A CLI reference (`docs/cli.md`): every command, flag, and environment variable of the tool —
   the server, `init`, and `profile` — in one linkable page, generated from the commands'
   built-in help.

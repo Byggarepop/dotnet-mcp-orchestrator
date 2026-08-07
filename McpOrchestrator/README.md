@@ -95,6 +95,14 @@ sent (echoed for auditing). Anything that goes wrong is returned as
 `{ "error": ..., "availableCapabilities": [...] }` rather than thrown, so the agent always receives
 parseable JSON.
 
+Every call is validated against the tool's schema before it is bound: a call with missing,
+unknown, or wrongly-typed parameters returns an error naming the exact problem and the expected
+shape (e.g. `Missing required parameter 'arguments'. Expected shape: {capability: string, tool:
+string, arguments: object}.`), and predictable synonyms — `args`/`params` for `arguments`,
+`tool_name` for `tool`, and similar — are accepted as aliases, with a note in the result nudging
+the agent toward the canonical name. A failure from the proxied server is relayed with its actual
+error text, attributed as `Downstream capability '<name>' tool '<tool>' failed: ...`.
+
 The catalog is not only pull-based: the initialize handshake's **server instructions** carry
 every capability's name + summary (and, for capabilities marked `"promote": true`, their full
 `instructions`), and the `list_capabilities` tool description ends with a generated *"Currently

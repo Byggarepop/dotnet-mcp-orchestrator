@@ -20,3 +20,6 @@ _aot/
 mcp-publisher
 mcp-publisher.exe
 *.tar.gz
+/McpOrchestrator/Videos
+/.claude
+.mcp.json

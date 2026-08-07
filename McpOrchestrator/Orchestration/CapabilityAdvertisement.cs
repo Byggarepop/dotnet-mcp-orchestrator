@@ -77,9 +77,11 @@ internal static class CapabilityAdvertisement
         // capability. These are the minimum viable scent and are never dropped; the total
         // budget applies to what the promoted instructions may add on top.
         const string header =
-            "This orchestrator proxies the downstream MCP capabilities listed below. Call " +
-            "'list_capabilities' for the full catalog, 'discover_tools' to see one capability's " +
-            "tools and schemas, then 'route' to invoke a tool.\n\nCapabilities:\n";
+            "This orchestrator proxies the downstream MCP capabilities below: call " +
+            "'list_capabilities' for the catalog, 'discover_tools' for a capability's tool " +
+            "schemas, then 'route' to invoke. Example: " +
+            "{\"capability\":\"<name>\",\"tool\":\"<tool>\",\"arguments\":{\"key\":\"value\"}} " +
+            "— the parameter is 'arguments', not 'args'.\n\nCapabilities:\n";
         var summaryLines = capabilities.Select(c => string.IsNullOrWhiteSpace(c.Summary)
             ? $"- {c.Name}\n"
             : $"- {c.Name}: {Truncate(OneLine(c.Summary), MaxSummaryChars, " …")}\n").ToList();
