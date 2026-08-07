@@ -12,7 +12,7 @@
 
 ## See it in 70 seconds
 
-https://github.com/user-attachments/assets/REPLACE-WITH-UPLOADED-VIDEO-ID
+https://github.com/user-attachments/assets/741c1afa-4bef-4870-9b84-e2c245b8117e
 
 ## Measured impact
 
