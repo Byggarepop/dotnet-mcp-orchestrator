@@ -10,6 +10,10 @@
 
 **Every MCP server you connect costs context before the agent does anything — its tool manifests sit in the prompt on every turn.** McpOrchestrator puts one server between your agent and all the others and loads downstream tool manifests **on demand**, so the agent's always-on context stays flat no matter how many servers you add. The agent sees three meta-tools — `list_capabilities` → `discover_tools` → `route` — and the orchestrator is a **pure relay**: it forwards exactly what the agent sends, never interpreting it. It can also serve **[Agent Skills](https://agentskills.io)** with the same on-demand discipline.
 
+## See it in 70 seconds
+
+https://github.com/user-attachments/assets/REPLACE-WITH-UPLOADED-VIDEO-ID
+
 ## Measured impact
 
 Against a real workplace MCP setup, measured with the Copilot CLI's `/usage`:

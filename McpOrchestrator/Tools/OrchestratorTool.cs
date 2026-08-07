@@ -98,7 +98,7 @@ public sealed class OrchestratorTool
         string capability,
         [Description("Exact downstream tool name as returned by 'discover_tools', e.g. 'get_issue'.")]
         string tool,
-        [Description("Arguments object matching the tool's input schema, e.g. {\"issueKey\":\"PROJ-123\"}. Use {} for no arguments.")]
+        [Description("Arguments object matching the tool's input schema, e.g. {\"issueKey\":\"PROJ-123\"}. Use {} for no arguments. The parameter name is 'arguments', not 'args'.")]
         JsonElement arguments,
         CancellationToken cancellationToken)
     {
@@ -112,6 +112,15 @@ public sealed class OrchestratorTool
         catch (Exception ex)
         {
             logger.LogError(ex, "route failed for capability={Capability} tool={Tool}", capability, tool);
+
+            // A protocol-level fault from the proxied server: relay its actual error text,
+            // attributed to the capability/tool that produced it, never a generic wrapper.
+            if (ex is ModelContextProtocol.McpException)
+            {
+                return OrchestratorJson.Serialize(new ErrorView(
+                    $"Downstream capability '{capability}' tool '{tool}' failed: {ex.Message}"));
+            }
+
             return Error(ex, catalog);
         }
     }

@@ -58,8 +58,11 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <!-- Ship the root README as the package README shown on nuget.org. -->
-    <None Include="..\README.md" Pack="true" PackagePath="\" />
+    <!-- Ship the root README as the package README shown on nuget.org — via a pack-time transform
+         (PackNuGetReadme below): the GitHub video embed (a bare user-attachments URL, which GitHub
+         renders as an inline player but nuget.org shows as a naked link) is swapped for a clickable
+         demo thumbnail. One source README, two renderers. -->
+    <None Include="$(BaseIntermediateOutputPath)nuget-readme\README.md" Pack="true" PackagePath="\" />
     <!-- Package icon shown on nuget.org (PackageIcon above points at this packed file). -->
     <None Include="img\logo-512.png" Pack="true" PackagePath="\" />
     <!-- Pack the registry manifest at .mcp/server.json INSIDE the package. nuget.org reads this
@@ -105,5 +108,33 @@
     <!-- Expose internal test seams (e.g. CapabilityCatalog.FromDescriptors, ToolPayloads). -->
     <InternalsVisibleTo Include="McpOrchestrator.Tests" />
   </ItemGroup>
+
+  <!-- Generates the NuGet flavor of the root README at pack time (see the packed None item above).
+       GitHub plays the demo video inline from a bare user-attachments URL; nuget.org can't render
+       video, so that line becomes a clickable thumbnail linking to the same video. Everything else
+       (including the mcp-name registry marker) passes through untouched. -->
+  <UsingTask TaskName="TransformReadmeForNuGet" TaskFactory="RoslynCodeTaskFactory" AssemblyFile="$(MSBuildToolsPath)\Microsoft.Build.Tasks.Core.dll">
+    <ParameterGroup>
+      <Source Required="true" />
+      <Dest Required="true" />
+    </ParameterGroup>
+    <Task>
+      <Using Namespace="System.IO" />
+      <Using Namespace="System.Text.RegularExpressions" />
+      <Code Type="Fragment" Language="cs"><![CDATA[
+        var text = File.ReadAllText(Source);
+        text = Regex.Replace(
+            text,
+            @"(?m)^(https://github\.com/user-attachments/assets/\S+)\s*$",
+            "[![Watch the demo video](https://raw.githubusercontent.com/Byggarepop/dotnet-mcp-orchestrator/main/McpOrchestrator/img/demo-thumb.png)]($1)");
+        Directory.CreateDirectory(Path.GetDirectoryName(Dest));
+        File.WriteAllText(Dest, text);
+      ]]></Code>
+    </Task>
+  </UsingTask>
+
+  <Target Name="PackNuGetReadme" BeforeTargets="GenerateNuspec">
+    <TransformReadmeForNuGet Source="$(MSBuildProjectDirectory)\..\README.md" Dest="$(BaseIntermediateOutputPath)nuget-readme\README.md" />
+  </Target>
 
 </Project>

@@ -146,6 +146,10 @@ public static class OrchestratorHost
             .WithTools<Tools.OrchestratorTool>()
             // Skills delivery mode A (catalog tools) and mode B (SEP-2640 skill:// resources).
             .WithTools<Tools.SkillsTool>()
+            // Validate every tools/call before the SDK binds it: misnamed/missing parameters get
+            // an error naming the exact problem (instead of the SDK's generic binding failure),
+            // and predictable synonyms like 'args' for 'arguments' are rescued via aliasing.
+            .WithRequestFilters(filters => filters.AddCallToolFilter(ToolCallValidationFilter.Attach))
             .WithListResourcesHandler(Orchestration.Skills.SkillResourceHandlers.ListAsync)
             .WithReadResourceHandler(Orchestration.Skills.SkillResourceHandlers.ReadAsync);
 
