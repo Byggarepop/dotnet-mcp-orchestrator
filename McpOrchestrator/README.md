@@ -869,7 +869,10 @@ startup the chosen path is printed to stderr. To change or disable it:
 The orchestrator can serve **[Agent Skills](https://agentskills.io/specification)** (SKILL.md
 folders) from local directories, git repositories, or an HTTP(S) index — a compact `list_skills`
 catalog up front, full skill content only on demand, with allow/deny lists, SHA-256 integrity
-pinning, and audit logging. Skills are served as files, never executed.
+pinning, and audit logging. Skills are served as files, never executed. Verified compatible with
+[Microsoft Agent Framework's MCP skill discovery](https://devblogs.microsoft.com/agent-framework/discover-agent-skills-from-mcp-servers-in-net/)
+(`AgentSkillsProviderBuilder.UseMcpSkills`), which consumes the same `skill://index.json`
+convention the orchestrator serves.
 
 Everything else lives in **[docs/skills.md](https://github.com/Byggarepop/dotnet-mcp-orchestrator/blob/main/docs/skills.md)**:
 
