@@ -130,4 +130,34 @@ public sealed class ToolCallValidationEndToEndTests : IAsyncLifetime
         Assert.StartsWith("Downstream capability 'jira' tool 'no_such_tool' failed:", error);
         Assert.DoesNotContain("An error occurred invoking 'route'", error);
     }
+
+    [Fact]
+    public async Task Route_missing_required_downstream_parameter_relays_the_downstream_cause()
+    {
+        // get_issue requires 'issueKey'. The downstream MCP SDK genericizes the resulting
+        // ArgumentException to "An error occurred invoking 'get_issue'." on the wire and logs
+        // the real cause only to the process's stderr — which the orchestrator must relay,
+        // because the calling model cannot read the host's logs.
+        var result = await _client!.CallToolAsync("route", new Dictionary<string, object?>
+        {
+            ["capability"] = "jira",
+            ["tool"] = "get_issue",
+            ["arguments"] = JsonSerializer.SerializeToElement(new Dictionary<string, string>()),
+        });
+
+        // The payload is serialized JSON (with escaped quotes), so assert on the parsed view.
+        var first = Assert.IsType<TextContentBlock>(result.Content[0]);
+        using var doc = JsonDocument.Parse(first.Text);
+        var root = doc.RootElement;
+
+        Assert.True(root.GetProperty("isError").GetBoolean());
+        Assert.StartsWith(
+            "Downstream capability 'jira' tool 'get_issue' failed:",
+            root.GetProperty("text").GetString());
+
+        // The downstream's own error names the missing parameter — it never reaches the wire
+        // (the SDK genericizes it), so it must arrive via the captured stderr.
+        var stderr = string.Join("\n", root.GetProperty("stderr").EnumerateArray().Select(l => l.GetString()));
+        Assert.Contains("issueKey", stderr);
+    }
 }

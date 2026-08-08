@@ -103,25 +103,46 @@ public sealed class OrchestratorTool
         CancellationToken cancellationToken)
     {
         logger.LogInformation("route capability={Capability} tool={Tool}", capability, tool);
+
+        // Marked before dispatch so a failure can relay exactly the stderr the downstream
+        // process wrote during this call — the calling model cannot read the host's logs.
+        var stderrMark = connections.StderrMark(capability);
         try
         {
             var args = ToolPayloads.ParseArguments(arguments);
             var result = await connections.CallToolAsync(capability, tool, args, cancellationToken);
-            return OrchestratorJson.Serialize(ToRouteView(capability, tool, args, result));
+            var view = ToRouteView(capability, tool, args, result);
+            if (view.IsError)
+            {
+                // The downstream reported failure inside a normal result. Some servers — the
+                // MCP C# SDK's binding layer included — genericize the message on the wire
+                // ("An error occurred invoking '<tool>'.") and log the real exception only to
+                // stderr, so attribute the text and attach the stderr captured during the call.
+                view = view with
+                {
+                    Text = $"Downstream capability '{capability}' tool '{tool}' failed: " +
+                        (string.IsNullOrEmpty(view.Text) ? "(no error text from downstream)" : view.Text),
+                    Stderr = await CaptureStderrAsync(connections, capability, stderrMark),
+                };
+            }
+
+            return OrchestratorJson.Serialize(view);
+        }
+        catch (CapabilityNotFoundException ex)
+        {
+            logger.LogError(ex, "route failed for capability={Capability} tool={Tool}", capability, tool);
+            return Error(ex, catalog);
         }
         catch (Exception ex)
         {
             logger.LogError(ex, "route failed for capability={Capability} tool={Tool}", capability, tool);
 
-            // A protocol-level fault from the proxied server: relay its actual error text,
+            // Anything thrown around the call — a protocol-level fault from the proxied server
+            // (McpException), a timeout, a connect failure — is relayed with its actual message,
             // attributed to the capability/tool that produced it, never a generic wrapper.
-            if (ex is ModelContextProtocol.McpException)
-            {
-                return OrchestratorJson.Serialize(new ErrorView(
-                    $"Downstream capability '{capability}' tool '{tool}' failed: {ex.Message}"));
-            }
-
-            return Error(ex, catalog);
+            return OrchestratorJson.Serialize(new ErrorView(
+                $"Downstream capability '{capability}' tool '{tool}' failed: {ex.Message}",
+                Stderr: await CaptureStderrAsync(connections, capability, stderrMark)));
         }
     }
 
@@ -141,6 +162,45 @@ public sealed class OrchestratorTool
         Structured = result.StructuredContent,
         Arguments = ToolPayloads.ArgumentsToNode(args),
     };
+
+    /// <summary>
+    /// Collects the stderr a capability's process wrote since the given mark, for inclusion in a
+    /// failure payload. Stderr arrives on a pipe read concurrently with the tool-call response,
+    /// so the cause of a just-failed call may not have landed yet — poll briefly (bounded at
+    /// ~300ms, error paths only) before giving up. Returns null when nothing was captured; long
+    /// captures keep the head and tail with an omission marker in between.
+    /// </summary>
+    private static async Task<IReadOnlyList<string>?> CaptureStderrAsync(
+        IDownstreamConnectionManager connections, string capability, long mark)
+    {
+        const int MaxLines = 40;
+
+        var lines = connections.StderrSince(capability, mark);
+        for (var attempt = 0; lines.Count == 0 && attempt < 10; attempt++)
+        {
+            await Task.Delay(25, CancellationToken.None);
+            lines = connections.StderrSince(capability, mark);
+        }
+
+        if (lines.Count == 0)
+        {
+            return null;
+        }
+
+        // One more beat so the rest of a multi-line write (e.g. a stack trace) lands too.
+        await Task.Delay(25, CancellationToken.None);
+        lines = connections.StderrSince(capability, mark);
+
+        if (lines.Count <= MaxLines)
+        {
+            return lines;
+        }
+
+        return lines.Take(MaxLines / 2)
+            .Append($"… ({lines.Count - MaxLines} lines omitted) …")
+            .Concat(lines.TakeLast(MaxLines / 2))
+            .ToList();
+    }
 
     /// <summary>
     /// Serializes any exception into a structured <see cref="ErrorView"/> string so the agent

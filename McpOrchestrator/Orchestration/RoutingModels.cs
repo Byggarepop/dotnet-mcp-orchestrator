@@ -53,7 +53,20 @@ public sealed record RouteView
 
     /// <summary>The arguments actually sent downstream (echoed back so the call is auditable).</summary>
     public JsonNode? Arguments { get; init; }
+
+    /// <summary>
+    /// What the downstream server process wrote to stderr while this call ran. Populated only on
+    /// failures — servers often log the real cause (e.g. the exception behind a genericized
+    /// "An error occurred invoking …" result) where the calling model cannot otherwise see it.
+    /// </summary>
+    public IReadOnlyList<string>? Stderr { get; init; }
 }
 
-/// <summary>A structured error returned to the model instead of throwing.</summary>
-public sealed record ErrorView(string Error, IReadOnlyList<string>? AvailableCapabilities = null);
+/// <summary>
+/// A structured error returned to the model instead of throwing. <see cref="Stderr"/> carries any
+/// stderr the downstream process wrote while the failing call ran (see <see cref="RouteView.Stderr"/>).
+/// </summary>
+public sealed record ErrorView(
+    string Error,
+    IReadOnlyList<string>? AvailableCapabilities = null,
+    IReadOnlyList<string>? Stderr = null);

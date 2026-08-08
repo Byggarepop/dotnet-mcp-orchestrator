@@ -35,6 +35,13 @@ public sealed class DownstreamConnectionManager :
     private readonly ConcurrentDictionary<string, ConnectionEntry> _clients =
         new(StringComparer.OrdinalIgnoreCase);
 
+    // Recent stderr per capability. Downstream servers write their real failure detail here
+    // (the MCP SDK genericizes unhandled tool exceptions on the wire), so the route tool reads
+    // this back to relay the actual cause to the calling model. Survives reconnects so lines
+    // from a crashing process remain readable after its connection is evicted.
+    private readonly ConcurrentDictionary<string, StderrRing> _stderr =
+        new(StringComparer.OrdinalIgnoreCase);
+
     /// <summary>Creates the manager. Connections are opened lazily on first use, not here.</summary>
     /// <param name="trace">
     /// Optional session-trace writer. When supplied (via <c>--trace-out</c>), each successful
@@ -162,6 +169,14 @@ public sealed class DownstreamConnectionManager :
         }
     }
 
+    /// <inheritdoc />
+    public long StderrMark(string capability) =>
+        _stderr.TryGetValue(capability, out var ring) ? ring.Mark : 0;
+
+    /// <inheritdoc />
+    public IReadOnlyList<string> StderrSince(string capability, long mark) =>
+        _stderr.TryGetValue(capability, out var ring) ? ring.Since(mark) : [];
+
     /// <summary>Resolves a capability name to its descriptor, or throws if it is not in the catalog.</summary>
     private CapabilityDescriptor Resolve(string capability) =>
         _catalog.Find(capability) ?? throw new CapabilityNotFoundException(capability, _catalog.Names);
@@ -254,6 +269,8 @@ public sealed class DownstreamConnectionManager :
                 Arguments = d.Args,
                 WorkingDirectory = d.WorkingDirectory,
                 EnvironmentVariables = d.Env.Count == 0 ? null : d.Env,
+                StandardErrorLines = line =>
+                    _stderr.GetOrAdd(d.Name, _ => new StderrRing()).Add(line),
             },
             _loggerFactory);
 
@@ -304,6 +321,60 @@ public sealed class DownstreamConnectionManager :
         }
 
         _clients.Clear();
+    }
+
+    /// <summary>
+    /// A bounded buffer of one capability's recent stderr lines, each tagged with a monotonic
+    /// sequence number so callers can scope a read to "lines written during my call": take
+    /// <see cref="Mark"/> before dispatching, read <see cref="Since"/> after it fails.
+    /// </summary>
+    private sealed class StderrRing
+    {
+        private const int Capacity = 256;
+        private const int MaxLineLength = 500;
+
+        private readonly object _gate = new();
+        private readonly Queue<(long Seq, string Line)> _lines = new();
+        private long _next;
+
+        /// <summary>Appends a stderr line, evicting the oldest once at capacity.</summary>
+        public void Add(string line)
+        {
+            if (line.Length > MaxLineLength)
+            {
+                line = line[..MaxLineLength] + "…";
+            }
+
+            lock (_gate)
+            {
+                _lines.Enqueue((_next++, line));
+                if (_lines.Count > Capacity)
+                {
+                    _lines.Dequeue();
+                }
+            }
+        }
+
+        /// <summary>The sequence number the next line will get — a position marker.</summary>
+        public long Mark
+        {
+            get
+            {
+                lock (_gate)
+                {
+                    return _next;
+                }
+            }
+        }
+
+        /// <summary>Returns the retained lines written at or after the given mark.</summary>
+        public IReadOnlyList<string> Since(long mark)
+        {
+            lock (_gate)
+            {
+                return _lines.Where(l => l.Seq >= mark).Select(l => l.Line).ToList();
+            }
+        }
     }
 
     /// <summary>
