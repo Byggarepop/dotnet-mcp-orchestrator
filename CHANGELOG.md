@@ -7,6 +7,20 @@ All notable changes to this project are documented here. The format is based on
 The release workflow reads the section matching the tag (e.g. `## [0.1.0]` for tag `v0.1.0`) and
 uses it as the GitHub Release notes — so keep an entry per released version.
 
+## [Unreleased]
+
+### Fixed
+- `route` no longer swallows downstream failure detail on any path. Previously only
+  protocol-level faults were relayed with attribution; a downstream tool that *returned* an
+  error result kept its raw text — which, for servers built on the MCP C# SDK, is the
+  genericized "An error occurred invoking '&lt;tool&gt;'." with the real exception logged only to
+  the server process's stderr, invisible to the calling model. Now every failure path — error
+  results, protocol faults, timeouts, connect failures — returns
+  `Downstream capability '<name>' tool '<tool>' failed: <verbatim downstream message>` plus a
+  `stderr` field carrying the lines the downstream process wrote during the failing call (e.g.
+  `System.ArgumentException: The arguments dictionary is missing a value for the required
+  parameter 'repoPath'`), so the model can self-correct without access to host logs.
+
 ## [0.5.1] - 2026-08-08
 
 ### Added

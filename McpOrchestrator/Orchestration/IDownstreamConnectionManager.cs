@@ -26,6 +26,23 @@ public interface IDownstreamConnectionManager
         string tool,
         IReadOnlyDictionary<string, object?> arguments,
         CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Marks the current position in a capability's captured stderr stream, so lines written
+    /// after this point can be retrieved with <see cref="StderrSince"/>. Take a mark before
+    /// dispatching a call to scope the capture to that call. Returns 0 when the capability has
+    /// produced no stderr yet (or the implementation does not capture stderr).
+    /// </summary>
+    long StderrMark(string capability) => 0;
+
+    /// <summary>
+    /// Returns the stderr lines a capability's server process has written since the given mark
+    /// (bounded — old lines may have been evicted). Empty when nothing was captured. Used to
+    /// relay downstream failure detail that only reaches the process's stderr — e.g. the MCP
+    /// SDK genericizes unhandled tool exceptions to "An error occurred invoking '&lt;tool&gt;'"
+    /// and logs the real cause to stderr, which the calling model cannot otherwise see.
+    /// </summary>
+    IReadOnlyList<string> StderrSince(string capability, long mark) => [];
 }
 
 /// <summary>

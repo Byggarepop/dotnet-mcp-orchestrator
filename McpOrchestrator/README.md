@@ -100,8 +100,13 @@ unknown, or wrongly-typed parameters returns an error naming the exact problem a
 shape (e.g. `Missing required parameter 'arguments'. Expected shape: {capability: string, tool:
 string, arguments: object}.`), and predictable synonyms — `args`/`params` for `arguments`,
 `tool_name` for `tool`, and similar — are accepted as aliases, with a note in the result nudging
-the agent toward the canonical name. A failure from the proxied server is relayed with its actual
-error text, attributed as `Downstream capability '<name>' tool '<tool>' failed: ...`.
+the agent toward the canonical name. A failure from the proxied server — whether it returns an
+error result, faults at the protocol level, or times out — is relayed with its actual error text,
+attributed as `Downstream capability '<name>' tool '<tool>' failed: ...`, together with a
+`stderr` field carrying what the downstream process wrote to stderr during the failing call.
+Servers built on the MCP C# SDK genericize unhandled tool exceptions on the wire ("An error
+occurred invoking '<tool>'.") and log the real cause only to stderr — relaying it is the only way
+the calling agent, which cannot read the host's logs, can see the actual problem and self-correct.
 
 The catalog is not only pull-based: the initialize handshake's **server instructions** carry
 every capability's name + summary (and, for capabilities marked `"promote": true`, their full
