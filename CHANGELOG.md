@@ -7,7 +7,7 @@ All notable changes to this project are documented here. The format is based on
 The release workflow reads the section matching the tag (e.g. `## [0.1.0]` for tag `v0.1.0`) and
 uses it as the GitHub Release notes — so keep an entry per released version.
 
-## [Unreleased]
+## [0.5.1] - 2026-08-08
 
 ### Added
 - Actionable tool-call validation: every tools/call is checked against the target tool's input
@@ -22,6 +22,10 @@ uses it as the GitHub Release notes — so keep an entry per released version.
 - The initialize-handshake server instructions now open with a literal `route` example —
   `{"capability":"<name>","tool":"<tool>","arguments":{"key":"value"}}` — and an explicit note
   that the parameter is `arguments`, not `args`.
+- Verified interop with Microsoft Agent Framework's MCP skill discovery
+  (`AgentSkillsProviderBuilder.UseMcpSkills`): the provider discovers the orchestrator's
+  skills through the `skill://index.json` convention with no server-side changes. Documented
+  in the README and `docs/skills.md`, with a runnable probe in `McpOrchestrator.InteropTest/`.
 
 ### Changed
 - A protocol-level failure from a proxied server is now relayed with attribution —
