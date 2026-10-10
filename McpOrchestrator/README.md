@@ -665,7 +665,7 @@ Each entry in `capabilities` is one downstream MCP server.
 | `name` | yes | — | Short, unique id the agent uses to address the capability. Matched case-insensitively. Duplicates are ignored (first wins). |
 | `summary` | recommended | `""` | One-line description shown to the model. `init` auto-generates it by connecting to the server once, from its `initialize` instructions (first sentence) or its tool names — such lines carry a trailing `// auto-generated` comment. Pass `init --no-summarize` to skip the connections and keep `TODO` placeholders instead. |
 | `instructions` | recommended | `""` | Prescriptive usage guidance: which tool, what arguments. The courier relies on this. |
-| `enabled` | no | `true` | When `false`, the capability is skipped entirely. |
+| `enabled` | no | `true` | When `false`, the capability is skipped entirely. Also accepts a `${VAR}` string — e.g. `"${USE_DATABASE:-false}"` — resolved like any other placeholder (true/false, yes/no, on/off, 1/0), so one shared catalog can be switched per machine. See [Per-project values](#per-project-values-in-a-shared-catalog). |
 | `promote` | no | `false` | Hoist this capability's full `instructions` into the initialize handshake's server instructions so the agent sees its trigger text from turn one. Opt in for capabilities the agent must call *proactively*. See [Proactive capabilities](#proactive-capabilities-promote). |
 | `transport` | no | `"stdio"` | Only `stdio` is implemented. |
 | `command` | yes | — | Executable that launches the downstream server (e.g. `dotnet`, `npx`). An entry with no command is skipped. |
@@ -686,12 +686,14 @@ inside the project. Each capability sees only its own directories, never the orc
 working directory or another capability's. A capability with neither field gets no `roots`
 capability at all, so the server applies its own default policy.
 
-**`${VAR}` substitution** (in `command`, `args`, `workingDirectory`, `roots`, and `env` values). You don't
+**`${VAR}` substitution** (in `enabled`, `command`, `args`, `workingDirectory`, `roots`, and `env` values). You don't
 need any of these — plain absolute paths work fine — but they're available if you want them:
 
 - `${CONFIG_DIR}` — the folder containing the config file (built in).
 - any other `${NAME}` — resolved from a **process environment variable**; an unresolved placeholder
-  is left as-is and logged.
+  is left as-is and logged (in [central mode](#central-configuration) it disables that capability
+  with an error instead).
+- `${NAME:-default}` — the same, falling back to `default` (may be empty) when `NAME` is unset.
 - `${SOLUTION_DIR}` — this repository's solution root (built in). You almost certainly don't need
   this: it exists so the in-repo sample configs can locate sibling demo servers. For your own setup,
   prefer absolute paths, `${CONFIG_DIR}`, or `${ENV_VAR}`.
@@ -810,6 +812,68 @@ supported way to keep tokens and machine-specific paths out of the shared catalo
 `${CONFIG_DIR}` and `${SOLUTION_DIR}` are machine-local and therefore **invalid** in a centrally
 served config; validation rejects them with a message suggesting `${ENV_VAR}` or absolute paths.
 Payloads over 1 MB and HTML responses (a login page instead of the raw file) are rejected too.
+
+#### Per-project values in a shared catalog
+
+The shared catalog is a **template**; each project's host config supplies the **values**. Write
+every project-specific setting as a placeholder, and have the orchestrator entry in each
+project's `.mcp.json` set those variables in its `env` block. One catalog then serves every
+repository with the right paths, roots, connection strings, and capability selection:
+
+```jsonc
+// Central catalog (served from the URL) — names no project.
+{
+  "capabilities": [
+    {
+      "name": "unwritten",
+      "summary": "Git-history hole detector for the current repository.",
+      "command": "dotnet",
+      "args": ["tool", "execute", "Unwritten", "--yes", "--", "mcp"],
+      "workingDirectory": "${PROJECT_ROOT}",
+      "roots": ["${PROJECT_ROOT}"]
+    },
+    {
+      "name": "database",
+      "summary": "Read-only SQL access to this project's development database.",
+      "enabled": "${USE_DATABASE:-false}",
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-postgres"],
+      "env": { "DATABASE_URL": "${DEV_DB_URL}" }
+    }
+  ]
+}
+```
+
+```jsonc
+// C:\ProjectA\.mcp.json — the only MCP the IDE sees; differs per project only in its values.
+{
+  "mcpServers": {
+    "orchestrator": {
+      "type": "stdio",
+      "command": "dotnet",
+      "args": ["tool", "execute", "McpOrchestrator", "--yes"],
+      "env": {
+        "MCP_ORCHESTRATOR_CONFIG_URL": "https://devops.example.com/mcp/orchestrator.config.json",
+        "PROJECT_ROOT": "C:/ProjectA",
+        "USE_DATABASE": "true",
+        "DEV_DB_URL": "postgresql://dev@localhost:5432/projecta"
+      }
+    }
+  }
+}
+```
+
+Two rules make this safe to roll out:
+
+- **`enabled` takes a placeholder.** `"enabled": "${USE_DATABASE:-false}"` lets a project opt in
+  (or, with `:-true`, opt out) without touching the catalog. The resolved value must be a boolean
+  word (true/false, yes/no, on/off, 1/0).
+- **A missing value is an error, not a literal.** In central mode an enabled capability whose
+  placeholder has no value on this machine (and no `:-default`) is **disabled** and an error names
+  the capability, the variable, and where to set it. The rest of the catalog keeps working, and
+  the next poll re-enables the capability once the variable exists. Local-file mode keeps its
+  lenient behaviour — unresolved placeholders stay as literal text with a warning — so existing
+  setups are unaffected.
 
 **Authoring the shared catalog (team lead).** `init` keeps generating local setups; to bootstrap
 a central one, run `mcp-orchestrator init <host-config> --print-central` — it prints only the

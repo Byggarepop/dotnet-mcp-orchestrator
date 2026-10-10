@@ -85,7 +85,7 @@ public sealed class InitCommandTests
         Assert.Equal("npx", files.Command);
         Assert.Equal(new[] { "-y", "@modelcontextprotocol/server-filesystem", "/repo" }, files.Args);
         Assert.Equal("bar", files.Env["FOO"]);
-        Assert.True(files.Enabled);
+        Assert.True(files.IsEnabled);
         Assert.Equal("stdio", files.Transport);
         // Summary carries a visible TODO placeholder naming the server, for the user to replace.
         Assert.Contains("TODO", files.Summary);

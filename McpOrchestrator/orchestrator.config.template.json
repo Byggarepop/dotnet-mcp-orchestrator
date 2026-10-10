@@ -21,9 +21,11 @@
 //   "roots"        OPTIONAL. Folders advertised to the server as MCP roots (its workspace), e.g.
 //                  where a browser server may save screenshots. Defaults to [workingDirectory].
 //
-// Placeholders you can use in command / args / workingDirectory / roots / env values:
-//   ${CONFIG_DIR}  -> the folder this config file lives in
-//   ${SOME_VAR}    -> the value of the SOME_VAR environment variable
+// Placeholders you can use in enabled / command / args / workingDirectory / roots / env values:
+//   ${CONFIG_DIR}          -> the folder this config file lives in
+//   ${SOME_VAR}            -> the value of the SOME_VAR environment variable
+//   ${SOME_VAR:-fallback}  -> the same, or "fallback" when SOME_VAR is unset
+//   "enabled": "${USE_X:-false}" switches a capability on per machine (true/false, yes/no, on/off, 1/0).
 //
 // The single example below is DISABLED. As written it launches the official filesystem MCP server
 // (via npx) scoped to this file's folder. Enable it, or replace it with your own server.
