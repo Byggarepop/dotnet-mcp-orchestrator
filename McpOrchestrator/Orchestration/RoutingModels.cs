@@ -16,11 +16,11 @@ public static class OrchestratorJson
 }
 
 /// <summary>
-/// Source-generation context for everything the orchestrator writes back to the agent. Indented +
-/// camelCase + null-skipping, matching what the agent expects; AOT/trim-safe (no reflection).
+/// Source-generation context for everything the orchestrator writes back to the agent. Compact
+/// (no indentation — the output is model-facing text, and whitespace costs tokens on every call) +
+/// camelCase + null-skipping; AOT/trim-safe (no reflection).
 /// </summary>
 [JsonSourceGenerationOptions(
-    WriteIndented = true,
     PropertyNamingPolicy = JsonKnownNamingPolicy.CamelCase,
     DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull)]
 [JsonSerializable(typeof(List<CapabilityView>))]

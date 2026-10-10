@@ -19,6 +19,32 @@ uses it as the GitHub Release notes — so keep an entry per released version.
   `file:` URIs — never the orchestrator's own working directory, and nothing at all for a
   capability with neither.
 
+### Changed
+- Tool results are now serialized **compact** (no indentation) instead of pretty-printed. Every
+  string the orchestrator hands back to the model — `list_capabilities`, `discover_tools`,
+  `route`, the structured errors, and the skills catalog tools — went through a serializer with
+  `WriteIndented = true`, so each nesting level cost two spaces and a CRLF per line of
+  model-visible text. Config files and the `init` scaffolding are unaffected; only the
+  model-facing text changed, and the JSON content is identical. Measured on the demo catalog
+  plus the repo's two skills (chars of the returned text; tokens scale with it):
+
+  | Tool result | Indented | Compact | Saved |
+  |---|---|---|---|
+  | `list_capabilities` (3 capabilities) | 292 | 224 | 23% |
+  | `discover_tools` jira (2 tools with schemas) | 966 | 616 | 36% |
+  | `discover_tools` codegen (1 tool) | 767 | 468 | 39% |
+  | `route` get_issue | 339 | 301 | 11% |
+  | `route` search_issues | 718 | 680 | 5% |
+  | `route` with text + structured copy | 594 | 465 | 22% |
+  | `route` unknown-capability error | 164 | 130 | 21% |
+  | `list_skills` (2 skills) | 454 | 408 | 10% |
+  | `get_skill` (3.6 KB SKILL.md body) | 3613 | 3576 | 1% |
+  | Total over 11 calls | 9275 | 8154 | 12% |
+
+  The saving is largest where the orchestrator itself emits structure (tool schemas in
+  `discover_tools`, the `structured` field of `route`) and negligible where the payload is one
+  long string (a skill body).
+
 ### Added
 - Optional per-capability `roots` config field (supports `${VAR}`); a change to it restarts
   that downstream on hot reload like any other launch-relevant field.

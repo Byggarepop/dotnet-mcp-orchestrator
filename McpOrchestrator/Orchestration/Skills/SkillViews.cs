@@ -13,10 +13,9 @@ internal static class SkillJson
 
 /// <summary>
 /// Source-generation context for the skills tool responses. Same shape conventions as
-/// <see cref="OrchestratorJsonContext"/>: indented, camelCase, null-skipping.
+/// <see cref="OrchestratorJsonContext"/>: compact, camelCase, null-skipping.
 /// </summary>
 [JsonSourceGenerationOptions(
-    WriteIndented = true,
     PropertyNamingPolicy = JsonKnownNamingPolicy.CamelCase,
     DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull)]
 [JsonSerializable(typeof(List<SkillListView>))]
