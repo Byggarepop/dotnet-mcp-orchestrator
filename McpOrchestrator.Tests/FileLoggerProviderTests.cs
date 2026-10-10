@@ -24,6 +24,37 @@ public class FileLoggerProviderTests
             Assert.Contains("info", text);
             Assert.Contains("Catalog:", text);
             Assert.Contains("hello world", text);
+            Assert.StartsWith("===== McpOrchestrator", text);
+            Assert.Contains($"PID {Environment.ProcessId}", text);
+        }
+        finally
+        {
+            try { Directory.Delete(dir, recursive: true); } catch { /* best-effort cleanup */ }
+        }
+    }
+
+    [Fact]
+    public void Second_instance_gets_a_fresh_per_process_file_instead_of_appending()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), "mcporch-logtest-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            Directory.CreateDirectory(dir);
+            var pidPath = Path.Combine(dir, $"orchestrator-{Environment.ProcessId}.log");
+            File.WriteAllText(pidPath, "stale entry from an earlier process with the same PID\n");
+
+            using var first = FileLoggerProvider.Create(dir);
+            using (var second = FileLoggerProvider.Create(dir))
+            {
+                Assert.NotNull(second);
+                Assert.Equal(pidPath, second!.FilePath);
+                second.CreateLogger("Catalog").LogInformation("fresh");
+            }
+
+            var text = File.ReadAllText(pidPath);
+            Assert.DoesNotContain("stale entry", text);
+            Assert.StartsWith("===== McpOrchestrator", text);
+            Assert.Contains("fresh", text);
         }
         finally
         {

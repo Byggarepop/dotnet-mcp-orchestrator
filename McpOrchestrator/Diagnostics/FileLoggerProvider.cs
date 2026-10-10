@@ -64,11 +64,15 @@ internal sealed class FileLoggerProvider : ILoggerProvider
             catch (IOException)
             {
                 // Another instance already owns orchestrator.log — use our own file instead.
+                // Truncate rather than append: Windows reuses process IDs, so an existing file with
+                // this PID belongs to a finished run and would make its history look like ours.
                 path = Path.Combine(dir, $"orchestrator-{Environment.ProcessId}.log");
-                stream = OpenAppend(path);
+                stream = OpenTruncate(path);
             }
 
-            return new FileLoggerProvider(new StreamWriter(stream) { AutoFlush = true }, path);
+            var writer = new StreamWriter(stream) { AutoFlush = true };
+            writer.WriteLine(SessionBanner());
+            return new FileLoggerProvider(writer, path);
         }
         catch
         {
@@ -105,6 +109,19 @@ internal sealed class FileLoggerProvider : ILoggerProvider
     // (which then falls back to a per-process file).
     private static FileStream OpenAppend(string path) =>
         new(path, FileMode.Append, FileAccess.Write, FileShare.Read);
+
+    private static FileStream OpenTruncate(string path) =>
+        new(path, FileMode.Create, FileAccess.Write, FileShare.Read);
+
+    /// <summary>
+    /// One line marking where this process's entries start, so runs appended to the same file
+    /// (orchestrator.log is shared across sessions) can be told apart.
+    /// </summary>
+    internal static string SessionBanner()
+    {
+        var version = typeof(FileLoggerProvider).Assembly.GetName().Version?.ToString(3) ?? "?";
+        return $"===== McpOrchestrator {version} session start {DateTimeOffset.Now:yyyy-MM-dd HH:mm:ss.fff zzz} PID {Environment.ProcessId} =====";
+    }
 
     private static void RotateIfLarge(string path)
     {

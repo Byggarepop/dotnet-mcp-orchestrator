@@ -246,31 +246,54 @@ public sealed class DownstreamConnectionManager :
         new($"{what} timed out after {descriptor.CallTimeoutSeconds ?? DefaultCallTimeoutSeconds}s.");
 
     /// <summary>
-    /// Client options for one downstream connection. When the capability has workspace
-    /// directories (<see cref="DownstreamRoots.For"/>), the client advertises the MCP <c>roots</c>
-    /// capability <em>and</em> answers <c>roots/list</c> with exactly those directories — the two
-    /// must always go together: advertising roots without answering (or answering with none)
-    /// makes a server such as chrome-devtools-mcp reject every output path. The handler is part of
-    /// the options passed to <see cref="McpClient.CreateAsync"/>, so it is registered before the
-    /// initialize handshake and therefore before the server can ask. Without directories the
-    /// result is <c>null</c>: nothing advertised, so the server applies its own default policy.
+    /// The MCP protocol revision requested from every downstream server.
+    ///
+    /// <para><b>Why this is pinned.</b> With <c>ProtocolVersion</c> unset, the C# SDK (2.0+)
+    /// prefers the 2026-07-28 revision and opens every connection with a <c>server/discover</c>
+    /// probe. Downstream servers that predate that revision reject the probe (-32601 / -32602),
+    /// the SDK logs a warning ("request failed for method 'server/discover'"), Python servers
+    /// dump a validation-error block on stderr, and only then does the SDK fall back to the
+    /// classic <c>initialize</c> handshake. The connection works either way; pinning an
+    /// initialize-capable revision skips the probe, so there is no warning, no stderr noise and
+    /// no probe timeout (5 s against a server that silently drops unknown methods).</para>
+    ///
+    /// <para><b>If the orchestrator ever adds an HTTP transport, revisit this.</b> The
+    /// 2026-07-28 revision is what removed Streamable HTTP sessions in favour of per-request
+    /// metadata. A pinned 2025-11-25 client still connects to such servers (the spec requires
+    /// servers to keep <c>initialize</c>), but it will use session mode and never the new
+    /// session-less path. At that point either drop the pin for HTTP capabilities only, or make
+    /// it a per-capability setting. See the C# SDK docs on
+    /// <c>McpClientOptions.ProtocolVersion</c> / <c>DiscoverProbeTimeout</c> and
+    /// https://github.com/modelcontextprotocol/csharp-sdk/issues/1765.</para>
     /// </summary>
-    internal static McpClientOptions? BuildClientOptions(CapabilityDescriptor descriptor)
-    {
-        var roots = DownstreamRoots.For(descriptor);
-        if (roots.Count == 0)
-        {
-            return null;
-        }
+    internal const string DownstreamProtocolVersion = "2025-11-25";
 
-        return new McpClientOptions
+    /// <summary>
+    /// Builds the per-connection client options: the pinned protocol revision
+    /// (<see cref="DownstreamProtocolVersion"/>) and, when the capability has root directories
+    /// (<see cref="DownstreamRoots.For"/>), the MCP <c>roots</c> capability <em>and</em> a
+    /// <c>roots/list</c> handler answering with exactly those directories — the two must always go
+    /// together: advertising roots without answering (or answering with none) makes a server such
+    /// as chrome-devtools-mcp reject every output path. The handler is part of the options passed
+    /// to <see cref="McpClient.CreateAsync"/>, so it is registered before the handshake and
+    /// therefore before the server can ask. Without directories nothing is advertised, so the
+    /// server applies its own default policy.
+    /// </summary>
+    internal static McpClientOptions BuildClientOptions(CapabilityDescriptor descriptor)
+    {
+        var options = new McpClientOptions { ProtocolVersion = DownstreamProtocolVersion };
+
+        var roots = DownstreamRoots.For(descriptor);
+        if (roots.Count > 0)
         {
-            Capabilities = new ClientCapabilities { Roots = new RootsCapability() },
-            Handlers = new McpClientHandlers
+            options.Capabilities = new ClientCapabilities { Roots = new RootsCapability() };
+            options.Handlers = new McpClientHandlers
             {
                 RootsHandler = (_, _) => ValueTask.FromResult(new ListRootsResult { Roots = roots.ToList() }),
-            },
-        };
+            };
+        }
+
+        return options;
     }
 
     /// <summary>
