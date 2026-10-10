@@ -7,6 +7,22 @@ All notable changes to this project are documented here. The format is based on
 The release workflow reads the section matching the tag (e.g. `## [0.1.0]` for tag `v0.1.0`) and
 uses it as the GitHub Release notes — so keep an entry per released version.
 
+## [Unreleased]
+
+### Fixed
+- Downstream connections no longer start with a rejected `server/discover` probe. The MCP C# SDK
+  2.0 opens every connection by probing for the 2026-07-28 revision; servers that predate it
+  answer with an error (`Method not found` / `Invalid request parameters`), which the orchestrator
+  log showed as a warning for every capability and, for Python servers, as a block of
+  `validation errors for ClientRequest` on stderr. The SDK fell back to `initialize` and the
+  connection worked, so nothing was broken, but the noise looked like a failure. The orchestrator
+  now pins its downstream clients to the `2025-11-25` revision, which skips the probe entirely.
+  Revisit if an HTTP transport is ever added (see the comment on `DownstreamProtocolVersion`).
+- The fallback per-process log (`orchestrator-<pid>.log`, used when another orchestrator already
+  holds `orchestrator.log`) is truncated on start instead of appended. Windows reuses process
+  IDs, so a new run could land under an old session's entries. Every log now also opens with a
+  session banner (version, time, PID) so runs appended to the shared log can be told apart.
+
 ## [0.6.0] - 2026-10-10
 
 ### Fixed

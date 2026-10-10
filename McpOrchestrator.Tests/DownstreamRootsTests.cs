@@ -76,10 +76,21 @@ public sealed class DownstreamRootsTests
     }
 
     [Fact]
+    public void Every_downstream_client_pins_the_initialize_handshake_revision()
+    {
+        // With ProtocolVersion unset the SDK sends a server/discover probe first, which
+        // pre-2026-07-28 servers reject with a logged warning before the SDK falls back.
+        Assert.Equal("2025-11-25", DownstreamConnectionManager.BuildClientOptions(Cap("bare")).ProtocolVersion);
+        Assert.Equal("2025-11-25", DownstreamConnectionManager.BuildClientOptions(Cap("x", AbsDir("ws"))).ProtocolVersion);
+    }
+
+    [Fact]
     public void No_directories_means_no_roots_and_no_roots_capability()
     {
         Assert.Empty(DownstreamRoots.For(Cap("bare")));
-        Assert.Null(DownstreamConnectionManager.BuildClientOptions(Cap("bare")));
+        var options = DownstreamConnectionManager.BuildClientOptions(Cap("bare"));
+        Assert.Null(options.Capabilities?.Roots);
+        Assert.Null(options.Handlers?.RootsHandler);
     }
 
     [Fact]
@@ -89,7 +100,6 @@ public sealed class DownstreamRootsTests
 
         var options = DownstreamConnectionManager.BuildClientOptions(Cap("x", ws));
 
-        Assert.NotNull(options);
         Assert.NotNull(options.Capabilities?.Roots);
         Assert.NotNull(options.Handlers?.RootsHandler);
         var listed = await options.Handlers!.RootsHandler!(null, CancellationToken.None);
