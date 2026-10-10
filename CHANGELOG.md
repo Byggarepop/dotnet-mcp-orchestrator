@@ -7,7 +7,7 @@ All notable changes to this project are documented here. The format is based on
 The release workflow reads the section matching the tag (e.g. `## [0.1.0]` for tag `v0.1.0`) and
 uses it as the GitHub Release notes — so keep an entry per released version.
 
-## [Unreleased]
+## [0.6.1] - 2026-10-10
 
 ### Fixed
 - Downstream connections no longer start with a rejected `server/discover` probe. The MCP C# SDK
