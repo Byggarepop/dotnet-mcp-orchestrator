@@ -1,76 +1,41 @@
-# Moving to a central catalog with per-project values
+# Move to a central catalog in 7 steps
 
-**The contract:** one centrally served catalog is the template, each project's host config
-supplies the values, and the orchestrator is the only MCP an IDE needs to know about. This
-guide converts an existing setup — a user-level orchestrator entry plus a local catalog that
-names every project — into that shape, without breaking the machines that have not moved yet.
+Goal: one shared catalog for everyone, one `.mcp.json` per project that only fills in values,
+and no project-suffixed duplicates like `Unwritten-ProjectA` / `Unwritten-ProjectB`.
 
-Read the model first: [Central configuration](../McpOrchestrator/README.md#central-configuration)
-and [Per-project values in a shared catalog](../McpOrchestrator/README.md#per-project-values-in-a-shared-catalog).
+Background, if you want it: [Central configuration](../McpOrchestrator/README.md#central-configuration)
+and [Per-project values](../McpOrchestrator/README.md#per-project-values-in-a-shared-catalog).
 
-## Before you start: version compatibility
+---
 
-The per-project features need the orchestrator version that introduced them (see the
-[changelog](../CHANGELOG.md) entry for `enabled` placeholders). Older versions react badly to the
-new syntax in a **shared** catalog:
+## 1. Upgrade every machine
 
-| Syntax | Older orchestrator |
-| --- | --- |
-| `"enabled": "${USE_X:-false}"` | `enabled` must be a JSON boolean there, so the **whole catalog fails to parse**. A machine with a cached copy keeps the previous catalog; a fresh install starts with no capabilities. |
-| `${VAR:-default}` | Not recognised. The placeholder is left as literal text, including the `:-default` part. |
-| Unresolved `${VAR}` | Left as literal text with a warning, as before. |
+Older orchestrators cannot read the new syntax (`"enabled": "${…}"`, `${VAR:-default}`), and a
+shared catalog that uses it would fail to load there. Upgrade first, publish second.
 
-So the order is: **upgrade every machine first, then publish a catalog that uses the new syntax.**
-`dotnet tool execute McpOrchestrator --yes` picks up the latest release on next launch; a pinned
-`--version` in the host config has to be bumped by hand.
+- `dotnet tool execute McpOrchestrator --yes` picks up the latest release on next launch.
+- A pinned `--version` in a host config: bump it by hand.
 
-## Step 1 — Inventory what you have
+## 2. Make the template from your current catalog
 
-Typical starting point on each machine:
+Open your existing `orchestrator.config.json` and, for each duplicated group:
 
-- A user-level orchestrator registration: the Copilot app's **Customize → MCP servers** entry,
-  `%USERPROFILE%\.mcp.json` for Visual Studio, the user profile `mcp.json` in VS Code, or a
-  user-scope server in Claude Code.
-- One local catalog (`MCP_ORCHESTRATOR_CONFIG=C:/Users/you/orchestrator.config.json`) in which
-  project-specific settings are expressed as **duplicated entries** — `Unwritten-ProjectA`,
-  `Unwritten-ProjectB` — each with its own paths and an instruction telling the agent which
-  one to pick.
+1. Keep one entry. Name it plainly: `unwritten`, not `Unwritten-ProjectA`.
+2. Replace each project-specific value with a placeholder:
+   `"workingDirectory": "${PROJECT_ROOT}"`, `"env": { "DATABASE_URL": "${DEV_DB_URL}" }`.
+3. Delete the "only use in ProjectA" sentences from `instructions`.
+4. Capability not every project needs? Make it opt-in: `"enabled": "${USE_DATABASE:-false}"`.
+5. Remove any `${CONFIG_DIR}` / `${SOLUTION_DIR}`; use `${ENV_VAR}` or absolute paths.
 
-Keep that catalog; it is the raw material for the template and your rollback.
-
-## Step 2 — Write the template catalog
-
-Start from the local catalog and, for each group of project-suffixed entries:
-
-1. Keep **one** entry and give it the plain name (`unwritten`, not `Unwritten-ProjectA`). The
-   agent routes by name, so pick names you are happy to keep.
-2. Replace every value that differs per project with a placeholder:
-   `"workingDirectory": "${PROJECT_ROOT}"`, `"roots": ["${PROJECT_ROOT}"]`,
-   `"env": { "DATABASE_URL": "${DEV_DB_URL}" }`.
-3. Delete the "only use this in ProjectA" sentences from `instructions`; there is nothing left
-   to disambiguate.
-4. For a capability that only some projects need, make it opt-in:
-   `"enabled": "${USE_DATABASE:-false}"`. For one that most projects need, opt-out:
-   `"enabled": "${USE_BROWSER:-true}"`.
-5. Give a sensible default wherever one exists (`${SHARED_LIBS:-C:/Shared/Contracts}`), so a
-   project only has to set what is genuinely its own.
-6. Remove `${CONFIG_DIR}` and `${SOLUTION_DIR}`; central validation rejects them. Use
-   `${ENV_VAR}` or absolute paths.
-
-Write down the resulting list of variable names and what each means. That list is the whole
-contract between the catalog and the projects — put it in a `"//variables"` comment at the top
-of the catalog so it travels with the file.
-
-Result, abbreviated:
+Add a comment at the top listing the variable names. That list is the contract with projects.
 
 ```jsonc
 {
-  "//variables": "PROJECT_ROOT (required) · DEV_DB_URL (required when USE_DATABASE=true) · USE_DATABASE (default false)",
+  "//variables": "PROJECT_ROOT (required) · USE_DATABASE (default false) · DEV_DB_URL (when USE_DATABASE=true)",
   "capabilities": [
     {
       "name": "unwritten",
       "summary": "Git-history hole detector for the current repository.",
-      "promote": true,
       "command": "dotnet",
       "args": ["tool", "execute", "Unwritten", "--yes", "--", "mcp"],
       "workingDirectory": "${PROJECT_ROOT}",
@@ -88,43 +53,38 @@ Result, abbreviated:
 }
 ```
 
-### Test the template before publishing it
+## 3. Try it locally before publishing
 
-Central-mode rules (reject `${CONFIG_DIR}`, disable on a missing variable) only apply when the
-catalog arrives over HTTP, so test it the same way. Plain `http://` is allowed for localhost:
+Central rules only apply when the catalog comes over HTTP. Localhost is fine:
 
 ```powershell
-# in the folder holding the template
+cd <folder with the template>
 python -m http.server 8765
 ```
 
-Then, in a project folder, run the orchestrator with the URL and that project's variables and
-call `list_capabilities` from your agent, or just read the log at
-`%USERPROFILE%\.mcpOrchestrator\orchestrator.log`. A missing variable shows up as:
+Point one project at `http://127.0.0.1:8765/orchestrator.config.json` (step 5 shows how),
+open it in your IDE, and check `%USERPROFILE%\.mcpOrchestrator\orchestrator.log`.
+A missing variable is reported like this, and only that capability is switched off:
 
 ```
-Capability 'database' is disabled on this machine: ${DEV_DB_URL} not set. A central catalog
-resolves ${VAR} from the orchestrator's environment — add the variable to the env block of the
-orchestrator entry in your host config (.mcp.json), or set it as an OS environment variable ...
+Capability 'database' is disabled on this machine: ${DEV_DB_URL} not set. ... add the variable
+to the env block of the orchestrator entry in your host config (.mcp.json) ...
 ```
 
-## Step 3 — Publish the catalog
+## 4. Publish the template
 
-Any static HTTPS host works: a raw file URL in a Git repository, blob storage, an internal web
-server. If the URL needs authentication, each developer sets `MCP_ORCHESTRATOR_CONFIG_AUTH` as an
-OS-level environment variable; never put it in a host config file.
+Put it on any static HTTPS host: a raw file in a Git repo, blob storage, an internal web server.
+If the URL needs a token, each developer sets `MCP_ORCHESTRATOR_CONFIG_AUTH` as an OS environment
+variable. Never in a file.
 
-## Step 4 — Point each project at it
-
-In each project folder, let `init` rewrite (or create) the host config:
+## 5. In each project: point `.mcp.json` at it
 
 ```bash
+cd C:\ProjectA
 dotnet tool execute McpOrchestrator --yes init --central-url https://devops.example.com/mcp/orchestrator.config.json
 ```
 
-It writes the orchestrator entry with `MCP_ORCHESTRATOR_CONFIG_URL` in its env block and lifts
-any stdio servers it finds out of the host config (the catalog is assumed to cover them).
-**`init` writes only the URL**; add the project's variables to the same env block by hand:
+`init` writes the URL only. Open the file and add the project's values to the same env block:
 
 ```jsonc
 // C:\ProjectA\.mcp.json
@@ -145,50 +105,37 @@ any stdio servers it finds out of the host config (the catalog is assumed to cov
 }
 ```
 
-Per-host notes:
+Repeat for ProjectB with its own values. Commit only values that are the same on every
+developer's machine.
 
-- **GitHub Copilot app and Copilot CLI** read `.mcp.json` with the `mcpServers` key (a
-  `servers` key is ignored). Repo-level servers load only after you accept the folder-trust
-  prompt once; the app and the CLI share that trust.
-- **VS Code** reads `.mcp.json` with `mcpServers`, or `.vscode/mcp.json` with `servers`.
-- **Visual Studio** reads `.mcp.json` with the `servers` key, or `.vs\mcp.json` for a
-  per-user, uncommitted copy. `${workspaceFolder}` is not expanded there; use absolute paths.
-- **Claude Code** reads `.mcp.json` with `mcpServers`.
+Which key your IDE reads:
 
-If one file must serve both key styles, keep the `servers` copy in `.vs\mcp.json` and the
-`mcpServers` copy in `.mcp.json`.
+| Host | File | Key |
+| --- | --- | --- |
+| GitHub Copilot app / CLI, Claude Code, VS Code | `.mcp.json` | `mcpServers` |
+| Visual Studio | `.mcp.json` or `.vs\mcp.json` | `servers` |
 
-Commit only values that hold on every developer's machine. A path that differs per developer
-belongs in an OS-level environment variable that the catalog references directly.
+The Copilot app and CLI ask you to trust the folder once before loading it.
 
-## Step 5 — Remove the user-level registration
+## 6. Remove the old user-level orchestrator
 
-Once a project's own `.mcp.json` launches the orchestrator, delete the global one, otherwise
-every session gets two orchestrators with overlapping tool names:
+Otherwise each session starts two orchestrators.
 
-- Copilot app: **Customize → MCP servers**, remove the orchestrator.
-- Visual Studio: remove the entry from `%USERPROFILE%\.mcp.json`.
-- VS Code: remove it from the user-profile `mcp.json`.
+- Copilot app: **Customize → MCP servers**, remove it.
+- Visual Studio: delete the entry in `%USERPROFILE%\.mcp.json`.
+- VS Code: delete it from the user-profile `mcp.json`.
 - Claude Code: `claude mcp remove orchestrator -s user`.
 
-Keep the global entry only if you also work in folders that have no `.mcp.json` — and then
-point it at a separate, small local catalog, not at the parameterized template.
+## 7. Check
 
-## Step 6 — Verify
-
-Open a project and ask the agent for `list_capabilities`. You should see one entry per
-capability, named as in the template, and only the ones that project enables. The log at
-`%USERPROFILE%\.mcpOrchestrator\orchestrator.log` confirms the source:
+Open a project and ask the agent to list capabilities. You should see the plain names from the
+template and only the capabilities that project enables. The log confirms the source:
 
 ```
 Central config mode: serving the catalog from https://... (MCP_ORCHESTRATOR_CONFIG_URL is set).
 ```
 
-and names any capability disabled for a missing variable. Fix the env block, save, and the next
-poll (default 300 s, or restart the host) re-enables it.
+---
 
-## Rollback
-
-Each project's `.mcp.json` is the switch. Replace `MCP_ORCHESTRATOR_CONFIG_URL` with
-`MCP_ORCHESTRATOR_CONFIG` pointing at the old local catalog and the orchestrator is back in
-local-file mode with the old entries. Nothing else was changed on the machine.
+**Rollback:** in that project's `.mcp.json`, replace `MCP_ORCHESTRATOR_CONFIG_URL` with
+`MCP_ORCHESTRATOR_CONFIG` pointing at your old local catalog. Done.
