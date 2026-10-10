@@ -53,6 +53,14 @@ public sealed class CapabilityDescriptor
     /// <summary>Working directory for the spawned server. Supports <c>${VAR}</c> substitution.</summary>
     public string? WorkingDirectory { get; set; }
 
+    /// <summary>
+    /// Directories advertised to this server as MCP <c>roots</c> (its workspace). Supports
+    /// <c>${VAR}</c> substitution. When empty, <see cref="WorkingDirectory"/> is the single root;
+    /// when that is also unset, no <c>roots</c> capability is advertised. See
+    /// <see cref="DownstreamRoots"/>.
+    /// </summary>
+    public List<string> Roots { get; set; } = new();
+
     /// <summary>Extra environment variables for the spawned server. Values support <c>${VAR}</c>.</summary>
     public Dictionary<string, string?> Env { get; set; } = new();
 

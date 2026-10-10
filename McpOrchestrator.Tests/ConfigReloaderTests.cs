@@ -113,6 +113,7 @@ public sealed class ConfigReloaderTests
 
     [Theory]
     [InlineData("workingDirectory")]
+    [InlineData("roots")]
     [InlineData("args")]
     [InlineData("transport")]
     [InlineData("connectTimeout")]
@@ -124,6 +125,7 @@ public sealed class ConfigReloaderTests
         switch (field)
         {
             case "workingDirectory": next.WorkingDirectory = "/elsewhere"; break;
+            case "roots": next.Roots = new() { "/elsewhere" }; break;
             case "args": next.Args = new() { "--other" }; break;
             case "transport": next.Transport = "future-transport"; break;
             case "connectTimeout": next.ConnectTimeoutSeconds = 5; break;

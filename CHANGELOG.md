@@ -7,6 +7,22 @@ All notable changes to this project are documented here. The format is based on
 The release workflow reads the section matching the tag (e.g. `## [0.1.0]` for tag `v0.1.0`) and
 uses it as the GitHub Release notes — so keep an entry per released version.
 
+## [Unreleased]
+
+### Fixed
+- Downstream servers now receive MCP **roots**. The orchestrator advertised no `roots`
+  capability to any downstream, so servers that scope file output to the client's workspace
+  (chrome-devtools-mcp — verified on 1.9.0 and 1.10.1 — restricts `take_screenshot` et al. to the OS temp folder in that
+  case) rejected every path inside the project with "Access denied: path ... is not within any
+  of the configured workspace roots." Each capability now advertises `roots` and answers
+  `roots/list` with its own `workingDirectory` (or the new optional `roots` list) as absolute
+  `file:` URIs — never the orchestrator's own working directory, and nothing at all for a
+  capability with neither.
+
+### Added
+- Optional per-capability `roots` config field (supports `${VAR}`); a change to it restarts
+  that downstream on hot reload like any other launch-relevant field.
+
 ## [0.5.2] - 2026-08-08
 
 ### Fixed
