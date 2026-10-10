@@ -29,8 +29,21 @@ public sealed class CapabilityDescriptor
     /// </summary>
     public string? Instructions { get; set; }
 
-    /// <summary>When false the capability is ignored (not advertised, not connectable).</summary>
-    public bool Enabled { get; set; } = true;
+    /// <summary>
+    /// Whether the capability is active. A JSON boolean as before, or a string holding a
+    /// <c>${VAR}</c> placeholder (for example <c>"${USE_DATABASE:-false}"</c>) that the catalog
+    /// loader resolves from the environment like every other substitutable field. Read the
+    /// resolved answer through <see cref="IsEnabled"/>.
+    /// </summary>
+    public EnabledSetting Enabled { get; set; } = EnabledSetting.True;
+
+    /// <summary>
+    /// The resolved <see cref="Enabled"/> value: <c>false</c> only when the field is a literal
+    /// <c>false</c>. An expression the loader has not resolved yet counts as enabled, matching
+    /// the field's default.
+    /// </summary>
+    [JsonIgnore]
+    public bool IsEnabled => Enabled.Literal ?? true;
 
     /// <summary>
     /// When true, this capability's <see cref="Instructions"/> are hoisted into the MCP

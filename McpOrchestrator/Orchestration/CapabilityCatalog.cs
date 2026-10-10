@@ -63,7 +63,7 @@ public sealed partial class CapabilityCatalog : ICapabilityCatalog
 
         foreach (var c in capabilities)
         {
-            if (!c.Enabled)
+            if (!c.IsEnabled)
             {
                 continue;
             }
@@ -141,9 +141,7 @@ public sealed partial class CapabilityCatalog : ICapabilityCatalog
 
         // Resolve ${VAR} placeholders first, then validate/dedupe. Disabled entries are skipped
         // before resolution so their placeholders never need to resolve.
-        var resolved = (config?.Capabilities ?? new())
-            .Where(c => c.Enabled)
-            .Select(c => Resolve(c, placeholders, logger));
+        var resolved = ResolveEnabled(config?.Capabilities ?? new(), placeholders, logger);
 
         var skills = McpOrchestrator.Orchestration.Skills.SkillsConfigResolver.Resolve(
             config?.Skills, placeholders, forbidLocalPlaceholders: false, logger);
@@ -243,14 +241,34 @@ public sealed partial class CapabilityCatalog : ICapabilityCatalog
 
         // Resolve every entry — disabled ones too, so the differ compares launch fields on equal
         // footing across an enabled/disabled flip.
-        var all = entries
-            .Select(c => Resolve(c, builtinPlaceholders, logger))
-            .ToList();
+        var all = new List<CapabilityDescriptor>(entries.Count);
+        foreach (var entry in entries)
+        {
+            var unresolved = new List<string>();
+            var c = Resolve(entry, builtinPlaceholders, logger, unresolved);
+
+            // Central policy: a placeholder this machine cannot supply is an error the developer
+            // must act on, not a literal "${DEV_DB_URL}" handed to the downstream server. Only the
+            // affected capability is switched off — the shared catalog itself is fine, and the
+            // rest of it must keep working on this machine.
+            if (forbidLocalPlaceholders && c.IsEnabled && unresolved.Count > 0)
+            {
+                logger.LogError(
+                    "Capability '{Name}' is disabled on this machine: {Placeholders} not set. A central "
+                    + "catalog resolves ${{VAR}} from the orchestrator's environment — add the variable to the "
+                    + "env block of the orchestrator entry in your host config (.mcp.json), or set it as an OS "
+                    + "environment variable, then the next poll re-enables it. Source: {Source}.",
+                    c.Name, string.Join(", ", unresolved.Distinct().Select(k => $"${{{k}}}")), sourceLabel);
+                c.Enabled = EnabledSetting.False;
+            }
+
+            all.Add(c);
+        }
 
         // Strict validation over the enabled entries: reject the whole reload rather than silently
         // dropping the offender (a running session must never lose a capability to a typo).
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        foreach (var c in all.Where(c => c.Enabled))
+        foreach (var c in all.Where(c => c.IsEnabled))
         {
             var problem =
                 string.IsNullOrWhiteSpace(c.Name) ? "an entry has no name"
@@ -345,9 +363,7 @@ public sealed partial class CapabilityCatalog : ICapabilityCatalog
             ["SOLUTION_DIR"] = solutionDir,
         };
 
-        var resolved = (config?.Capabilities ?? new())
-            .Where(c => c.Enabled)
-            .Select(c => Resolve(c, placeholders, logger));
+        var resolved = ResolveEnabled(config?.Capabilities ?? new(), placeholders, logger);
 
         var catalog = FromDescriptors(resolved, logger, fullPath);
         logger.LogInformation(
@@ -356,18 +372,87 @@ public sealed partial class CapabilityCatalog : ICapabilityCatalog
         return catalog;
     }
 
-    /// <summary>Applies <c>${VAR}</c> substitution in place to a descriptor's command, args, working dir, and env.</summary>
-    private static CapabilityDescriptor Resolve(
-        CapabilityDescriptor c, IReadOnlyDictionary<string, string> placeholders, ILogger logger)
+    /// <summary>
+    /// Lenient (local-file) resolution: decides each entry's <c>enabled</c> first, then resolves
+    /// the launch fields of the enabled entries only, so a disabled entry's placeholders never
+    /// need to exist on this machine. Unresolved placeholders are left as-is and logged.
+    /// </summary>
+    private static List<CapabilityDescriptor> ResolveEnabled(
+        List<CapabilityDescriptor> entries, IReadOnlyDictionary<string, string> placeholders, ILogger logger)
     {
-        c.Command = Substitute(c.Command, placeholders, logger);
-        c.Args = c.Args.Select(a => Substitute(a, placeholders, logger)).ToList();
-        c.WorkingDirectory = c.WorkingDirectory is null ? null : Substitute(c.WorkingDirectory, placeholders, logger);
-        c.Roots = c.Roots.Select(r => Substitute(r, placeholders, logger)).ToList();
+        var resolved = new List<CapabilityDescriptor>(entries.Count);
+        foreach (var c in entries)
+        {
+            ResolveEnabledSetting(c, placeholders, logger, unresolved: null);
+            if (c.IsEnabled)
+            {
+                resolved.Add(Resolve(c, placeholders, logger, unresolved: null));
+            }
+        }
+
+        return resolved;
+    }
+
+    /// <summary>
+    /// Applies <c>${VAR}</c> substitution in place to a descriptor's enabled flag, command, args,
+    /// working dir, roots, and env. Placeholder names that could not be resolved are appended to
+    /// <paramref name="unresolved"/> when the caller passes a list.
+    /// </summary>
+    private static CapabilityDescriptor Resolve(
+        CapabilityDescriptor c,
+        IReadOnlyDictionary<string, string> placeholders,
+        ILogger logger,
+        ICollection<string>? unresolved)
+    {
+        ResolveEnabledSetting(c, placeholders, logger, unresolved);
+        c.Command = Substitute(c.Command, placeholders, logger, unresolved);
+        c.Args = c.Args.Select(a => Substitute(a, placeholders, logger, unresolved)).ToList();
+        c.WorkingDirectory = c.WorkingDirectory is null ? null : Substitute(c.WorkingDirectory, placeholders, logger, unresolved);
+        c.Roots = c.Roots.Select(r => Substitute(r, placeholders, logger, unresolved)).ToList();
         c.Env = c.Env.ToDictionary(
             kv => kv.Key,
-            kv => kv.Value is null ? null : Substitute(kv.Value, placeholders, logger));
+            kv => kv.Value is null ? null : Substitute(kv.Value, placeholders, logger, unresolved));
         return c;
+    }
+
+    /// <summary>
+    /// Turns an <c>enabled</c> expression into a literal. An expression that does not resolve, or
+    /// resolves to something that is not a boolean word, keeps the field's default (<c>true</c>)
+    /// with a warning; the central-policy caller reads the unresolved name and decides.
+    /// </summary>
+    private static void ResolveEnabledSetting(
+        CapabilityDescriptor c,
+        IReadOnlyDictionary<string, string> placeholders,
+        ILogger logger,
+        ICollection<string>? unresolved)
+    {
+        if (!c.Enabled.IsExpression)
+        {
+            return;
+        }
+
+        var expression = c.Enabled.Expression!;
+        var text = Substitute(expression, placeholders, logger, unresolved);
+        if (text.Contains("${", StringComparison.Ordinal))
+        {
+            logger.LogWarning(
+                "Capability '{Name}': enabled = \"{Expression}\" could not be resolved; treating it as enabled.",
+                c.Name, expression);
+            c.Enabled = EnabledSetting.True;
+            return;
+        }
+
+        if (EnabledSetting.TryParseBoolean(text, out var value))
+        {
+            c.Enabled = value;
+            return;
+        }
+
+        logger.LogWarning(
+            "Capability '{Name}': enabled = \"{Expression}\" resolved to \"{Value}\", which is not a boolean "
+            + "(true/false, yes/no, on/off, 1/0); treating it as enabled.",
+            c.Name, expression, text);
+        c.Enabled = EnabledSetting.True;
     }
 
     /// <summary>
@@ -410,9 +495,18 @@ public sealed partial class CapabilityCatalog : ICapabilityCatalog
         return null;
     }
 
-    /// <summary>Replaces a <c>${VAR}</c> placeholder with a built-in value, then an env var; leaves unknowns as-is.
-    /// Internal so the skills config resolver applies identical substitution semantics.</summary>
-    internal static string Substitute(string value, IReadOnlyDictionary<string, string> placeholders, ILogger logger)
+    /// <summary>
+    /// Replaces a <c>${VAR}</c> placeholder with a built-in value, then an env var; a
+    /// <c>${VAR:-default}</c> form falls back to <c>default</c> when neither exists. Unknowns
+    /// without a default are left as-is, logged, and (when a list is supplied) reported through
+    /// <paramref name="unresolved"/>. Internal so the skills config resolver applies identical
+    /// substitution semantics.
+    /// </summary>
+    internal static string Substitute(
+        string value,
+        IReadOnlyDictionary<string, string> placeholders,
+        ILogger logger,
+        ICollection<string>? unresolved = null)
     {
         if (string.IsNullOrEmpty(value) || !value.Contains("${", StringComparison.Ordinal))
         {
@@ -433,12 +527,18 @@ public sealed partial class CapabilityCatalog : ICapabilityCatalog
                 return env;
             }
 
+            if (match.Groups[2].Success)
+            {
+                return match.Groups[2].Value;
+            }
+
             logger.LogWarning("Config placeholder ${{{Key}}} could not be resolved; left as-is.", key);
+            unresolved?.Add(key);
             return match.Value;
         });
     }
 
-    [GeneratedRegex(@"\$\{([A-Za-z_][A-Za-z0-9_]*)\}")]
+    [GeneratedRegex(@"\$\{([A-Za-z_][A-Za-z0-9_]*)(?::-([^}]*))?\}")]
     private static partial Regex PlaceholderRegex();
 }
 

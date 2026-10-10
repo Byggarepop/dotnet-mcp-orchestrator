@@ -36,8 +36,9 @@ The agent only ever sees *this one* server:
 This is the file you pointed `MCP_ORCHESTRATOR_CONFIG` at. Each entry is one capability the agent
 can route to; `command`/`args`/`env` are how that downstream MCP is launched. Use plain absolute
 paths here — you don't need any special syntax. Optionally, `${...}` placeholders are substituted
-if you want them: `${CONFIG_DIR}` (the folder this config lives in) and any `${ENV_VAR}` (a
-process environment variable, e.g. for API keys):
+if you want them: `${CONFIG_DIR}` (the folder this config lives in), any `${ENV_VAR}` (a
+process environment variable, e.g. for API keys), and `${ENV_VAR:-default}` for a fallback value.
+`enabled` accepts the same placeholders, e.g. `"enabled": "${USE_FILES:-false}"`:
 
 ```jsonc
 {
