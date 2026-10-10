@@ -694,6 +694,8 @@ need any of these — plain absolute paths work fine — but they're available i
   is left as-is and logged (in [central mode](#central-configuration) it disables that capability
   with an error instead).
 - `${NAME:-default}` — the same, falling back to `default` (may be empty) when `NAME` is unset.
+  The default may itself be a placeholder: `${USERPROFILE:-${HOME}}` works on Windows and on
+  macOS/Linux alike.
 - `${SOLUTION_DIR}` — this repository's solution root (built in). You almost certainly don't need
   this: it exists so the in-repo sample configs can locate sibling demo servers. For your own setup,
   prefer absolute paths, `${CONFIG_DIR}`, or `${ENV_VAR}`.

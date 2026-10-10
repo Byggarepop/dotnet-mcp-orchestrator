@@ -51,7 +51,9 @@ uses it as the GitHub Release notes — so keep an entry per released version.
 - `enabled` accepts a `${VAR}` string (e.g. `"${USE_DATABASE:-false}"`), resolved from the
   environment like every other substitutable field, so one centrally served catalog can switch
   capabilities on or off per machine. Boolean `true`/`false` keep working unchanged.
-- `${VAR:-default}` placeholder syntax: falls back to `default` when `VAR` is unset.
+- `${VAR:-default}` placeholder syntax: falls back to `default` when `VAR` is unset. The default
+  may itself be a placeholder (`${USERPROFILE:-${HOME}}`), so one catalog serves Windows and
+  Unix machines; the committed central example uses this for its `files` entry.
 - Central mode: an enabled capability with an unresolved placeholder is now disabled with an
   error naming the capability, the variable, and where to set it, instead of launching the
   downstream with the literal `${VAR}` text. Only that capability is affected; the rest of the

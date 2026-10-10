@@ -24,7 +24,8 @@
 // Placeholders you can use in enabled / command / args / workingDirectory / roots / env values:
 //   ${CONFIG_DIR}          -> the folder this config file lives in
 //   ${SOME_VAR}            -> the value of the SOME_VAR environment variable
-//   ${SOME_VAR:-fallback}  -> the same, or "fallback" when SOME_VAR is unset
+//   ${SOME_VAR:-fallback}  -> the same, or "fallback" when SOME_VAR is unset (a fallback may be
+//                             another placeholder: ${USERPROFILE:-${HOME}})
 //   "enabled": "${USE_X:-false}" switches a capability on per machine (true/false, yes/no, on/off, 1/0).
 //
 // The single example below is DISABLED. As written it launches the official filesystem MCP server
