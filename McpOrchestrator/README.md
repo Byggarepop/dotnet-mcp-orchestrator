@@ -875,6 +875,11 @@ Two rules make this safe to roll out:
   lenient behaviour — unresolved placeholders stay as literal text with a warning — so existing
   setups are unaffected.
 
+Converting an existing setup (a user-level orchestrator plus a catalog with per-project
+duplicates) is a short, reversible procedure — see
+[Moving to a central catalog with per-project values](https://github.com/Byggarepop/dotnet-mcp-orchestrator/blob/main/docs/central-migration.md),
+including which older versions choke on the new syntax and why every machine upgrades first.
+
 **Authoring the shared catalog (team lead).** `init` keeps generating local setups; to bootstrap
 a central one, run `mcp-orchestrator init <host-config> --print-central` — it prints only the
 generated catalog to stdout (no file writes, no host-config rewrite), ready to pipe into whatever

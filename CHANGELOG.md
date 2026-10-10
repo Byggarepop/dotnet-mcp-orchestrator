@@ -31,6 +31,8 @@ uses it as the GitHub Release notes — so keep an entry per released version.
   downstream with the literal `${VAR}` text. Only that capability is affected; the rest of the
   catalog stays live and the next poll re-enables it once the variable exists. Local-file mode
   is unchanged (unresolved placeholders are left as-is with a warning).
+- `docs/central-migration.md`: how to convert an existing setup to a central catalog with
+  per-project values, including version compatibility and rollback.
 
 ## [0.5.2] - 2026-08-08
 
