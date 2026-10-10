@@ -34,7 +34,7 @@ public class FileLoggerProviderTests
     }
 
     [Fact]
-    public void Second_instance_gets_a_fresh_per_process_file_instead_of_appending()
+    public void Per_process_file_is_truncated_not_appended()
     {
         var dir = Path.Combine(Path.GetTempPath(), "mcporch-logtest-" + Guid.NewGuid().ToString("N"));
         try
@@ -42,6 +42,39 @@ public class FileLoggerProviderTests
             Directory.CreateDirectory(dir);
             var pidPath = Path.Combine(dir, $"orchestrator-{Environment.ProcessId}.log");
             File.WriteAllText(pidPath, "stale entry from an earlier process with the same PID\n");
+
+            using (var provider = FileLoggerProvider.CreatePerProcess(dir))
+            {
+                Assert.Equal(pidPath, provider.FilePath);
+                provider.CreateLogger("Catalog").LogInformation("fresh");
+            }
+
+            var text = File.ReadAllText(pidPath);
+            Assert.DoesNotContain("stale entry", text);
+            Assert.StartsWith("===== McpOrchestrator", text);
+            Assert.Contains("fresh", text);
+        }
+        finally
+        {
+            try { Directory.Delete(dir, recursive: true); } catch { /* best-effort cleanup */ }
+        }
+    }
+
+    [Fact]
+    public void Second_instance_falls_back_to_the_per_process_file_on_windows()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            // FileShare.Read is only enforced by Windows; on Unix the second open succeeds and
+            // both instances share orchestrator.log.
+            return;
+        }
+
+        var dir = Path.Combine(Path.GetTempPath(), "mcporch-logtest-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            Directory.CreateDirectory(dir);
+            var pidPath = Path.Combine(dir, $"orchestrator-{Environment.ProcessId}.log");
 
             using var first = FileLoggerProvider.Create(dir);
             using (var second = FileLoggerProvider.Create(dir))
@@ -52,7 +85,6 @@ public class FileLoggerProviderTests
             }
 
             var text = File.ReadAllText(pidPath);
-            Assert.DoesNotContain("stale entry", text);
             Assert.StartsWith("===== McpOrchestrator", text);
             Assert.Contains("fresh", text);
         }

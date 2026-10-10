@@ -63,21 +63,35 @@ internal sealed class FileLoggerProvider : ILoggerProvider
             }
             catch (IOException)
             {
-                // Another instance already owns orchestrator.log — use our own file instead.
-                // Truncate rather than append: Windows reuses process IDs, so an existing file with
-                // this PID belongs to a finished run and would make its history look like ours.
-                path = Path.Combine(dir, $"orchestrator-{Environment.ProcessId}.log");
-                stream = OpenTruncate(path);
+                // Another instance already owns orchestrator.log (Windows enforces the share
+                // mode; on Unix the open succeeds and both instances append to the same file).
+                return CreatePerProcess(dir);
             }
 
-            var writer = new StreamWriter(stream) { AutoFlush = true };
-            writer.WriteLine(SessionBanner());
-            return new FileLoggerProvider(writer, path);
+            return FromStream(stream, path);
         }
         catch
         {
             return null;
         }
+    }
+
+    /// <summary>
+    /// Opens this process's own <c>orchestrator-&lt;pid&gt;.log</c>, truncating it: Windows reuses
+    /// process IDs, so an existing file with this PID belongs to a finished run and appending
+    /// would make its history look like ours.
+    /// </summary>
+    internal static FileLoggerProvider CreatePerProcess(string dir)
+    {
+        var path = Path.Combine(dir, $"orchestrator-{Environment.ProcessId}.log");
+        return FromStream(OpenTruncate(path), path);
+    }
+
+    private static FileLoggerProvider FromStream(FileStream stream, string path)
+    {
+        var writer = new StreamWriter(stream) { AutoFlush = true };
+        writer.WriteLine(SessionBanner());
+        return new FileLoggerProvider(writer, path);
     }
 
     public ILogger CreateLogger(string categoryName) => new FileLogger(categoryName, this);
