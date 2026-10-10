@@ -16,12 +16,12 @@
     },
     {
       "name": "files",
-      "//": "${USERPROFILE} resolves on each consuming machine (Windows). On macOS/Linux, change it to ${HOME}.",
+      "//": "${USERPROFILE:-${HOME}} resolves on each consuming machine: USERPROFILE on Windows, HOME on macOS/Linux. A default may itself be a placeholder.",
       "summary": "Read and inspect files under the user's home directory (list, read, search).",
       "enabled": "${ORCH_FILES_ENABLED:-true}",
       "transport": "stdio",
       "command": "npx",
-      "args": ["-y", "@modelcontextprotocol/server-filesystem", "${USERPROFILE}"],
+      "args": ["-y", "@modelcontextprotocol/server-filesystem", "${USERPROFILE:-${HOME}}"],
       "connectTimeoutSeconds": 120
     },
     {

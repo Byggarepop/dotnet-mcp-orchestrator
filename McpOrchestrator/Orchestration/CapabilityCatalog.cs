@@ -309,7 +309,9 @@ public sealed partial class CapabilityCatalog : ICapabilityCatalog
                     continue;
                 }
 
-                foreach (System.Text.RegularExpressions.Match match in PlaceholderRegex().Matches(value))
+                // A name scan rather than a full parse: a local placeholder is forbidden wherever it
+                // appears, including inside another placeholder's ${VAR:-default} fallback.
+                foreach (System.Text.RegularExpressions.Match match in PlaceholderNameRegex().Matches(value))
                 {
                     var key = match.Groups[1].Value;
                     if (key.Equals("CONFIG_DIR", StringComparison.OrdinalIgnoreCase)
@@ -496,11 +498,12 @@ public sealed partial class CapabilityCatalog : ICapabilityCatalog
     }
 
     /// <summary>
-    /// Replaces a <c>${VAR}</c> placeholder with a built-in value, then an env var; a
-    /// <c>${VAR:-default}</c> form falls back to <c>default</c> when neither exists. Unknowns
-    /// without a default are left as-is, logged, and (when a list is supplied) reported through
-    /// <paramref name="unresolved"/>. Internal so the skills config resolver applies identical
-    /// substitution semantics.
+    /// Replaces each <c>${VAR}</c> placeholder with a built-in value, then an env var; a
+    /// <c>${VAR:-default}</c> form falls back to <c>default</c> when neither exists. The default
+    /// may itself contain placeholders (<c>${USERPROFILE:-${HOME}}</c>), resolved the same way.
+    /// Unknowns without a default are left as-is, logged, and (when a list is supplied) reported
+    /// through <paramref name="unresolved"/>. Internal so the skills config resolver applies
+    /// identical substitution semantics.
     /// </summary>
     internal static string Substitute(
         string value,
@@ -513,33 +516,91 @@ public sealed partial class CapabilityCatalog : ICapabilityCatalog
             return value;
         }
 
-        return PlaceholderRegex().Replace(value, match =>
+        var sb = new System.Text.StringBuilder(value.Length);
+        var i = 0;
+        while (i < value.Length)
         {
-            var key = match.Groups[1].Value;
+            var open = value.IndexOf("${", i, StringComparison.Ordinal);
+            if (open < 0)
+            {
+                sb.Append(value, i, value.Length - i);
+                break;
+            }
+
+            sb.Append(value, i, open - i);
+            var close = FindPlaceholderEnd(value, open);
+            if (close < 0 || !TrySplitPlaceholder(value.AsSpan(open + 2, close - open - 2), out var key, out var fallback))
+            {
+                // Not a well-formed placeholder (no closing brace, or not an identifier): copy the
+                // two characters verbatim and keep scanning after them.
+                sb.Append("${");
+                i = open + 2;
+                continue;
+            }
+
             if (placeholders.TryGetValue(key, out var builtIn))
             {
-                return builtIn;
+                sb.Append(builtIn);
             }
-
-            var env = Environment.GetEnvironmentVariable(key);
-            if (env is not null)
+            else if (Environment.GetEnvironmentVariable(key) is { } env)
             {
-                return env;
+                sb.Append(env);
             }
-
-            if (match.Groups[2].Success)
+            else if (fallback is not null)
             {
-                return match.Groups[2].Value;
+                sb.Append(Substitute(fallback, placeholders, logger, unresolved));
+            }
+            else
+            {
+                logger.LogWarning("Config placeholder ${{{Key}}} could not be resolved; left as-is.", key);
+                unresolved?.Add(key);
+                sb.Append(value, open, close - open + 1);
             }
 
-            logger.LogWarning("Config placeholder ${{{Key}}} could not be resolved; left as-is.", key);
-            unresolved?.Add(key);
-            return match.Value;
-        });
+            i = close + 1;
+        }
+
+        return sb.ToString();
     }
 
-    [GeneratedRegex(@"\$\{([A-Za-z_][A-Za-z0-9_]*)(?::-([^}]*))?\}")]
-    private static partial Regex PlaceholderRegex();
+    /// <summary>
+    /// Index of the <c>}</c> that closes the placeholder opening at <paramref name="open"/>,
+    /// skipping over nested <c>${...}</c> inside its default; <c>-1</c> when unterminated.
+    /// </summary>
+    private static int FindPlaceholderEnd(string value, int open)
+    {
+        var depth = 0;
+        for (var j = open; j < value.Length; j++)
+        {
+            if (value[j] == '$' && j + 1 < value.Length && value[j + 1] == '{')
+            {
+                depth++;
+                j++;
+            }
+            else if (value[j] == '}' && --depth == 0)
+            {
+                return j;
+            }
+        }
+
+        return -1;
+    }
+
+    /// <summary>Splits <c>NAME</c> or <c>NAME:-default</c>; false when <c>NAME</c> is not an identifier.</summary>
+    private static bool TrySplitPlaceholder(ReadOnlySpan<char> inner, out string key, out string? fallback)
+    {
+        var sep = inner.IndexOf(":-", StringComparison.Ordinal);
+        var name = sep < 0 ? inner : inner[..sep];
+        fallback = sep < 0 ? null : inner[(sep + 2)..].ToString();
+        key = name.ToString();
+        return name.Length > 0
+            && (char.IsAsciiLetter(name[0]) || name[0] == '_')
+            && name.ToString().All(ch => char.IsAsciiLetterOrDigit(ch) || ch == '_');
+    }
+
+    /// <summary>Every placeholder name in a string, nested defaults included (used for the central-policy scan).</summary>
+    [GeneratedRegex(@"\$\{([A-Za-z_][A-Za-z0-9_]*)")]
+    private static partial Regex PlaceholderNameRegex();
 }
 
 /// <summary>

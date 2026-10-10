@@ -138,6 +138,52 @@ public sealed class EnabledPlaceholderTests
         Assert.DoesNotContain(log.Entries, e => e.Level == LogLevel.Error);
     }
 
+    [Fact]
+    public void Default_may_itself_be_a_placeholder()
+    {
+        using var a = new ScopedEnv("MCP_TEST_NEST_A", null);
+        using var b = new ScopedEnv("MCP_TEST_NEST_B", "C:/from-b");
+        using var c = new ScopedEnv("MCP_TEST_NEST_C", null);
+
+        var loaded = Parse(Config("true", """["${MCP_TEST_NEST_A:-${MCP_TEST_NEST_B}}", "${MCP_TEST_NEST_A:-${MCP_TEST_NEST_C:-last}}", "x${MCP_TEST_NEST_B}y"]"""), central: true)!;
+
+        Assert.Equal(new[] { "C:/from-b", "last", "xC:/from-by" }, loaded.Catalog.Find("db")!.Args);
+    }
+
+    [Fact]
+    public void Malformed_placeholders_are_left_verbatim()
+    {
+        var loaded = Parse(Config("true", """["${", "${not valid}", "${A", "$${MCP_TEST_NEST_B:-ok}"]"""), central: false)!;
+
+        Assert.Equal(new[] { "${", "${not valid}", "${A", "$ok" }, loaded.Catalog.Find("db")!.Args);
+    }
+
+    [Fact]
+    public void Local_placeholder_inside_a_default_is_rejected_in_central_mode()
+    {
+        var log = new CollectingLogger();
+
+        Assert.Null(Parse(Config("true", """["${MCP_TEST_NEST_A:-${CONFIG_DIR}/x}"]"""), central: true, log));
+        Assert.Contains(log.Entries, e => e.Level == LogLevel.Error && e.Message.Contains("CONFIG_DIR"));
+    }
+
+    [Fact]
+    public void Committed_central_example_passes_on_a_machine_without_USERPROFILE()
+    {
+        // The Linux/macOS runners have HOME but no USERPROFILE; the example must stay fully
+        // resolvable there, or central mode disables its 'files' capability.
+        using var profile = new ScopedEnv("USERPROFILE", null);
+        using var home = new ScopedEnv("HOME", "/home/dev");
+        var log = new CollectingLogger();
+        var path = Path.Combine(Demo.SolutionDir, "docs", "orchestrator.central.example.json");
+
+        var loaded = CapabilityCatalog.TryParseForReload(File.ReadAllText(path), path, NoBuiltins, forbidLocalPlaceholders: true, log)!;
+
+        Assert.Equal(new[] { "tokensaver", "files", "Unwritten" }, loaded.Catalog.Names);
+        Assert.Contains("/home/dev", loaded.Catalog.Find("files")!.Args);
+        Assert.DoesNotContain(log.Entries, e => e.Level == LogLevel.Error);
+    }
+
     // ----- unresolved placeholders: local stays lenient, central disables with an error ---------------
 
     [Fact]
