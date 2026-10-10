@@ -164,6 +164,7 @@ internal sealed class ConfigReloader
         !string.Equals(previous.Command, next.Command, StringComparison.Ordinal)
         || !previous.Args.SequenceEqual(next.Args, StringComparer.Ordinal)
         || !string.Equals(previous.WorkingDirectory, next.WorkingDirectory, StringComparison.Ordinal)
+        || !previous.Roots.SequenceEqual(next.Roots, StringComparer.Ordinal)
         || !string.Equals(previous.Transport, next.Transport, StringComparison.OrdinalIgnoreCase)
         || previous.ConnectTimeoutSeconds != next.ConnectTimeoutSeconds
         || previous.CallTimeoutSeconds != next.CallTimeoutSeconds

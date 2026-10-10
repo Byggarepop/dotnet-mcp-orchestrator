@@ -246,6 +246,34 @@ public sealed class DownstreamConnectionManager :
         new($"{what} timed out after {descriptor.CallTimeoutSeconds ?? DefaultCallTimeoutSeconds}s.");
 
     /// <summary>
+    /// Client options for one downstream connection. When the capability has workspace
+    /// directories (<see cref="DownstreamRoots.For"/>), the client advertises the MCP <c>roots</c>
+    /// capability <em>and</em> answers <c>roots/list</c> with exactly those directories — the two
+    /// must always go together: advertising roots without answering (or answering with none)
+    /// makes a server such as chrome-devtools-mcp reject every output path. The handler is part of
+    /// the options passed to <see cref="McpClient.CreateAsync"/>, so it is registered before the
+    /// initialize handshake and therefore before the server can ask. Without directories the
+    /// result is <c>null</c>: nothing advertised, so the server applies its own default policy.
+    /// </summary>
+    internal static McpClientOptions? BuildClientOptions(CapabilityDescriptor descriptor)
+    {
+        var roots = DownstreamRoots.For(descriptor);
+        if (roots.Count == 0)
+        {
+            return null;
+        }
+
+        return new McpClientOptions
+        {
+            Capabilities = new ClientCapabilities { Roots = new RootsCapability() },
+            Handlers = new McpClientHandlers
+            {
+                RootsHandler = (_, _) => ValueTask.FromResult(new ListRootsResult { Roots = roots.ToList() }),
+            },
+        };
+    }
+
+    /// <summary>
     /// Launches a capability's downstream server over stdio and completes the MCP handshake,
     /// subject to the capability's connect timeout. Only the <c>stdio</c> transport is supported.
     /// </summary>
@@ -284,7 +312,7 @@ public sealed class DownstreamConnectionManager :
         {
             client = await McpClient.CreateAsync(
                 transport,
-                clientOptions: null,
+                clientOptions: BuildClientOptions(d),
                 loggerFactory: _loggerFactory,
                 cancellationToken: connectCts.Token);
         }

@@ -18,8 +18,10 @@
 //   "instructions" OPTIONAL. A short when/why hint or convention (e.g. "use for sprint status").
 //                  You do NOT need to list the tools or their arguments here — the agent gets those
 //                  from the real downstream server via discover_tools. Leave it "" if not needed.
+//   "roots"        OPTIONAL. Folders advertised to the server as MCP roots (its workspace), e.g.
+//                  where a browser server may save screenshots. Defaults to [workingDirectory].
 //
-// Placeholders you can use in command / args / workingDirectory / env values:
+// Placeholders you can use in command / args / workingDirectory / roots / env values:
 //   ${CONFIG_DIR}  -> the folder this config file lives in
 //   ${SOME_VAR}    -> the value of the SOME_VAR environment variable
 //

@@ -282,6 +282,7 @@ public sealed partial class CapabilityCatalog : ICapabilityCatalog
         {
             var fields = new[] { c.Command, c.WorkingDirectory }
                 .Concat(c.Args)
+                .Concat(c.Roots)
                 .Concat(c.Env.Values);
             foreach (var value in fields)
             {
@@ -362,6 +363,7 @@ public sealed partial class CapabilityCatalog : ICapabilityCatalog
         c.Command = Substitute(c.Command, placeholders, logger);
         c.Args = c.Args.Select(a => Substitute(a, placeholders, logger)).ToList();
         c.WorkingDirectory = c.WorkingDirectory is null ? null : Substitute(c.WorkingDirectory, placeholders, logger);
+        c.Roots = c.Roots.Select(r => Substitute(r, placeholders, logger)).ToList();
         c.Env = c.Env.ToDictionary(
             kv => kv.Key,
             kv => kv.Value is null ? null : Substitute(kv.Value, placeholders, logger));

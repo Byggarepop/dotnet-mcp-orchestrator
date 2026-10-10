@@ -671,11 +671,22 @@ Each entry in `capabilities` is one downstream MCP server.
 | `command` | yes | — | Executable that launches the downstream server (e.g. `dotnet`, `npx`). An entry with no command is skipped. |
 | `args` | no | `[]` | Arguments to `command`. Supports `${VAR}` substitution. |
 | `workingDirectory` | no | host cwd | Working directory for the spawned server. Supports `${VAR}`. |
+| `roots` | no | `[workingDirectory]` | Directories advertised to the server as MCP **roots** (its workspace). Supports `${VAR}`. See [Workspace roots](#workspace-roots). |
 | `env` | no | `{}` | Extra environment variables for the spawned server. Values support `${VAR}`. |
 | `connectTimeoutSeconds` | no | `60` | Deadline for launch + MCP handshake. A timeout faults the connect and evicts it. |
 | `callTimeoutSeconds` | no | `100` | Deadline for a single tool call / tool-list. A timeout faults the call but keeps the connection. |
 
-**`${VAR}` substitution** (in `command`, `args`, `workingDirectory`, and `env` values). You don't
+**Workspace roots.** Every downstream connection advertises the MCP `roots` capability and
+answers `roots/list` with the capability's `roots` directories — or, when that is not set, its
+`workingDirectory` — as absolute `file:` URIs (`C:\Addept\WCSEmulator` → `file:///C:/Addept/WCSEmulator`,
+named `WCSEmulator`). Servers use this to scope file output: chrome-devtools-mcp, for instance,
+only saves `take_screenshot` / `print_to_pdf` files inside a root (plus the OS temp folder) and
+rejects everything else, so without roots a relative `shot.png` fails even though it resolves
+inside the project. Each capability sees only its own directories, never the orchestrator's own
+working directory or another capability's. A capability with neither field gets no `roots`
+capability at all, so the server applies its own default policy.
+
+**`${VAR}` substitution** (in `command`, `args`, `workingDirectory`, `roots`, and `env` values). You don't
 need any of these — plain absolute paths work fine — but they're available if you want them:
 
 - `${CONFIG_DIR}` — the folder containing the config file (built in).
