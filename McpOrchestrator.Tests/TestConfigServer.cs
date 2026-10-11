@@ -114,8 +114,12 @@ internal sealed class TestConfigServer : IDisposable
             _listener.Stop();
             _listener.Close();
         }
-        catch (ObjectDisposedException)
+        catch (Exception ex) when (ex is ObjectDisposedException or HttpListenerException)
         {
+            // On Linux the managed HttpListener's Close() re-resolves the endpoint it is removing
+            // and can throw "Address already in use" when a parallel test has meanwhile bound the
+            // same port (seen in CI). The listener is already stopped; tear-down must never fail
+            // the test that owned it.
         }
     }
 }
