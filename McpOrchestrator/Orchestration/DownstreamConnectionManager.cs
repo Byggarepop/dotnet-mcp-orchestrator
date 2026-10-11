@@ -1,3 +1,4 @@
+using System.Text.RegularExpressions;
 using System.Collections.Concurrent;
 using Microsoft.Extensions.Logging;
 using ModelContextProtocol;
@@ -14,7 +15,7 @@ namespace McpOrchestrator.Orchestration;
 /// config reload removes/replaces a capability (<see cref="InvalidateAsync"/>) — in-flight
 /// calls against a retiring connection drain before it is disposed.
 /// </summary>
-public sealed class DownstreamConnectionManager :
+public sealed partial class DownstreamConnectionManager :
     IDownstreamConnectionManager, IDownstreamConnectionLifecycle, IAsyncDisposable
 {
     /// <summary>Default connect deadline when a capability does not override it. Generous so a
@@ -280,8 +281,14 @@ public sealed class DownstreamConnectionManager :
     /// server applies its own default policy.
     /// </summary>
     internal static McpClientOptions BuildClientOptions(CapabilityDescriptor descriptor)
+        => BuildClientOptions(descriptor, DownstreamProtocolVersion);
+
+    /// <inheritdoc cref="BuildClientOptions(CapabilityDescriptor)"/>
+    /// <param name="descriptor">The capability.</param>
+    /// <param name="protocolVersion">The revision to pin; see <see cref="NegotiateDowngrade"/>.</param>
+    internal static McpClientOptions BuildClientOptions(CapabilityDescriptor descriptor, string protocolVersion)
     {
-        var options = new McpClientOptions { ProtocolVersion = DownstreamProtocolVersion };
+        var options = new McpClientOptions { ProtocolVersion = protocolVersion };
 
         var roots = DownstreamRoots.For(descriptor);
         if (roots.Count > 0)
@@ -295,6 +302,70 @@ public sealed class DownstreamConnectionManager :
 
         return options;
     }
+
+    /// <summary>
+    /// Connects with the pinned revision and, when the server negotiates an older one, reconnects
+    /// pinned to that revision instead of failing.
+    ///
+    /// <para>The pin (<see cref="DownstreamProtocolVersion"/>) is both the requested revision and
+    /// the minimum the SDK client accepts: a server built on an older SDK answers the
+    /// <c>initialize</c> with the revision it supports (as the spec tells it to), and the client
+    /// throws "Server protocol version mismatch" instead of taking it. The spec puts the choice on
+    /// the client: if it supports the server's revision it should continue. So the downgrade is
+    /// handled here, with a second connection pinned to the server's revision, provided that
+    /// revision is one the SDK supports over the <c>initialize</c> handshake. The pin is kept on
+    /// both attempts, so the <c>server/discover</c> probe and its warning noise never come back.
+    /// Anything else is still an error, with the server's revision named.</para>
+    /// </summary>
+    internal static async Task<McpClient> CreateClientAsync(
+        Func<IClientTransport> createTransport,
+        Func<string, McpClientOptions> optionsFor,
+        ILoggerFactory loggerFactory,
+        Action<string, string> onDowngrade,
+        CancellationToken cancellationToken)
+    {
+        var requested = DownstreamProtocolVersion;
+        try
+        {
+            return await McpClient.CreateAsync(createTransport(), optionsFor(requested), loggerFactory, cancellationToken);
+        }
+        catch (McpException ex) when (NegotiateDowngrade(ex.Message, requested) is { } negotiated)
+        {
+            onDowngrade(requested, negotiated);
+            return await McpClient.CreateAsync(createTransport(), optionsFor(negotiated), loggerFactory, cancellationToken);
+        }
+    }
+
+    /// <summary>
+    /// The revision to reconnect with after a mismatch, or <c>null</c> when the failure is not a
+    /// mismatch or the server's revision is not one this client can speak via <c>initialize</c>.
+    /// The SDK reports the mismatch only as text ("Expected X, got Y"), so the server's revision
+    /// is read from the message.
+    /// </summary>
+    internal static string? NegotiateDowngrade(string message, string requested)
+    {
+        var match = MismatchMessage().Match(message);
+        if (!match.Success)
+        {
+            return null;
+        }
+
+        var negotiated = match.Groups["got"].Value;
+        return negotiated != requested && InitializeHandshakeProtocolVersions.Contains(negotiated)
+            ? negotiated
+            : null;
+    }
+
+    /// <summary>
+    /// The revisions the SDK client can be pinned to and reach through the <c>initialize</c>
+    /// handshake (the SDK's own list, <c>McpProtocolVersions</c>, is internal). 2026-07-28 is
+    /// deliberately absent: it has no <c>initialize</c>, so a pin to it is not a downgrade path.
+    /// </summary>
+    internal static readonly IReadOnlySet<string> InitializeHandshakeProtocolVersions =
+        new HashSet<string>(StringComparer.Ordinal) { "2024-11-05", "2025-03-26", "2025-06-18", "2025-11-25" };
+
+    [GeneratedRegex(@"protocol version mismatch.*?got (?<got>\d{4}-\d{2}-\d{2})", RegexOptions.IgnoreCase)]
+    private static partial Regex MismatchMessage();
 
     /// <summary>
     /// Launches a capability's downstream server over stdio and completes the MCP handshake,
@@ -312,7 +383,9 @@ public sealed class DownstreamConnectionManager :
             "Connecting to capability '{Name}': {Command} {Args}",
             d.Name, d.Command, string.Join(' ', d.Args));
 
-        var transport = new StdioClientTransport(
+        // A factory rather than one transport: a protocol downgrade reconnects, and a stdio
+        // transport is one server process whose handshake has already been spent.
+        IClientTransport CreateTransport() => new StdioClientTransport(
             new StdioClientTransportOptions
             {
                 Name = d.Name,
@@ -333,11 +406,14 @@ public sealed class DownstreamConnectionManager :
         McpClient client;
         try
         {
-            client = await McpClient.CreateAsync(
-                transport,
-                clientOptions: BuildClientOptions(d),
-                loggerFactory: _loggerFactory,
-                cancellationToken: connectCts.Token);
+            client = await CreateClientAsync(
+                CreateTransport,
+                version => BuildClientOptions(d, version),
+                _loggerFactory,
+                (requested, negotiated) => _logger.LogInformation(
+                    "Capability '{Name}' speaks MCP protocol {Negotiated} rather than {Requested}; reconnecting at its revision.",
+                    d.Name, negotiated, requested),
+                connectCts.Token);
         }
         catch (OperationCanceledException) when (connectCts.IsCancellationRequested)
         {

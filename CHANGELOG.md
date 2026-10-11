@@ -7,6 +7,19 @@ All notable changes to this project are documented here. The format is based on
 The release workflow reads the section matching the tag (e.g. `## [0.1.0]` for tag `v0.1.0`) and
 uses it as the GitHub Release notes — so keep an entry per released version.
 
+## [0.7.3] - 2026-10-11
+
+### Fixed
+- Downstream servers built on an older MCP SDK connect again. Since 0.6.1 the orchestrator pins
+  its downstream clients to protocol revision 2025-11-25 (to skip the `server/discover` probe and
+  its warning flood), but the SDK treats that pin as a minimum: a server that answers `initialize`
+  with 2025-06-18 (TokenSaver 1.15.x, for example) was refused with "Server protocol version
+  mismatch", so `discover_tools` returned no schemas. The orchestrator now reconnects pinned to
+  the server's revision when it is one the SDK speaks over `initialize` (2024-11-05 through
+  2025-11-25), logging `speaks MCP protocol <old> rather than <pinned>; reconnecting at its
+  revision`. The probe is still never issued, so the earlier noise does not return. A revision the
+  SDK cannot speak is still a clear error.
+
 ## [0.7.2] - 2026-10-11
 
 ### Fixed
