@@ -7,6 +7,29 @@ All notable changes to this project are documented here. The format is based on
 The release workflow reads the section matching the tag (e.g. `## [0.1.0]` for tag `v0.1.0`) and
 uses it as the GitHub Release notes — so keep an entry per released version.
 
+## [0.7.2] - 2026-10-11
+
+### Fixed
+- Git skill sources no longer hang on every clone and fetch under a stdio host. Git inherited the
+  orchestrator's stdin, which is the MCP pipe the transport is always reading, and Git for Windows
+  blocks at startup on such a pipe, so each sync ran into the 60 s timeout without ever contacting
+  the remote. Git now gets its own stdin, closed at once.
+- The git skill source's `token` now authenticates as HTTP basic auth (`x-access-token:<token>`),
+  the form GitHub, GitLab and Azure DevOps document for tokens over HTTPS. It was sent as
+  `Authorization: Bearer`, which GitHub's git endpoints reject even for a valid token, so every
+  clone of a private repo got a 401 and fell through to the machine's credential helper.
+- With a token configured, git's credential helpers are switched off for the sync. Previously a
+  rejected token handed the request to the helper, which either waited for a login nobody could
+  see (the clone then hit the 60 s timeout) or erased the user's stored GitHub credential because
+  the server had answered 401.
+- Git Credential Manager's `credential.interactive=never` is passed as git config as well as the
+  environment switch, and the timeout warning now says the likely cause (a credential prompt) and
+  what to check.
+
+### Added
+- `clone started` / `fetch started` log lines carry `auth=token` or
+  `auth=none (git credential helper)`.
+
 ## [0.7.1] - 2026-10-11
 
 ### Fixed

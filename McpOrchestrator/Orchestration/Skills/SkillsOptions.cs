@@ -53,9 +53,9 @@ public sealed class SkillSourceOptions
     public string? Ref { get; set; }
 
     /// <summary>
-    /// (<c>git</c>) Bearer token for private repositories, passed as an
-    /// <c>Authorization: Bearer</c> header via git's <c>http.extraHeader</c>. Supports
-    /// <c>${VAR}</c> substitution. Never logged.
+    /// (<c>git</c>) Access token for private repositories, sent as HTTP basic auth
+    /// (<c>x-access-token:&lt;token&gt;</c>) via git's <c>http.extraHeader</c>; credential helpers
+    /// are switched off while a token is in use. Supports <c>${VAR}</c> substitution. Never logged.
     /// </summary>
     public string? Token { get; set; }
 
