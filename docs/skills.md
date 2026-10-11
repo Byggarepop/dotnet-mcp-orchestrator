@@ -155,8 +155,12 @@ Only if `git clone <url>` wouldn't already work on that machine:
 
 1. **Public repo** → no token, just the URL.
 2. **Your dev machine with stored git credentials** (e.g. Git Credential Manager) → no token; the
-   orchestrator shells out to your `git`, so its credentials are used. Test: if `git clone <url>`
-   succeeds in a terminal, the same URL works in the config.
+   orchestrator shells out to your `git`, so its *stored* credentials are used. It runs git with
+   credential prompts disabled (it has no terminal, and a prompt would hang the sync until the
+   timeout kills it), so the credential must already be saved: if `git clone <url>` succeeds in a
+   terminal *without asking*, the same URL works in the config. If git asks, clone once in a
+   terminal to store the credential, or use a token (next item). A refused or missing credential
+   shows in the log as `git could not authenticate to <url>` with the git error above it.
 3. **No stored credentials** (CI, servers, a shared central config) → create a read-only token
    (GitHub: Settings → Developer settings → *Fine-grained personal access token*, scoped to the
    skills repo, permission **Contents: Read-only**), set it as an environment variable (e.g. in
@@ -285,6 +289,11 @@ info Config reloaded from https://…: 0 added, 0 removed, …
   `refresh completed; checkout updated; <old> -> <new>`. A timed-out or failed fetch logs the git
   error and then either `serving the cached checkout at commit …; next refresh in Ns` (last-known-good)
   or `no usable checkout …; source yields no skills` — never a success-shaped line.
+- **Several orchestrator processes** (hosts run one per window and restart them all on a config
+  change) share the cache folder under a lock file. The first one clones; the others log
+  `another orchestrator instance is syncing …; waiting for it`, then `fetch started` against the
+  finished checkout. A cache folder with content but no `.git` (an interrupted clone) is logged
+  as `clearing it before cloning`.
 - **Contribution** per source says `fresh content`, `cached content (origin unreachable)` or
   `nothing (origin unreachable, no cache)`, and the `rebuilt` line repeats them.
 

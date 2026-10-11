@@ -121,6 +121,70 @@ public sealed class GitSkillSourceTests : IDisposable
     }
 
     [Fact]
+    public async Task Concurrent_instances_share_one_clone_through_the_cache_lock()
+    {
+        if (!GitAvailable()) return;
+        SeedOrigin("one");
+        var logA = new CollectingLogger();
+        var logB = new CollectingLogger();
+        // Two sources with the same id and cache root stand in for two orchestrator processes
+        // (hosts start several at once and restart them all on a config change).
+        var a = new GitSkillSource("team", OriginUrl, "main", null, CacheRoot, logA);
+        var b = new GitSkillSource("team", OriginUrl, "main", null, CacheRoot, logB);
+
+        var loads = await Task.WhenAll(a.LoadAsync(CancellationToken.None), b.LoadAsync(CancellationToken.None));
+
+        Assert.All(loads, l => Assert.Equal(SkillSourceFreshness.Fresh, l.Freshness));
+        Assert.All(loads, l => Assert.Equal("one", Assert.Single(l.Skills).Name));
+        var all = logA.Entries.Concat(logB.Entries).ToList();
+        Assert.Single(all, e => e.Message.Contains("clone started"));
+        Assert.Single(all, e => e.Message.Contains("fetch started")); // the waiter found the finished checkout
+        Assert.DoesNotContain(all, e => e.Message.Contains("already exists"));
+        Assert.DoesNotContain(all, e => e.Level == LogLevel.Warning);
+        Assert.False(File.Exists(a.LockPath)); // DeleteOnClose
+    }
+
+    [Fact]
+    public async Task A_cache_folder_without_a_checkout_is_cleared_before_cloning()
+    {
+        if (!GitAvailable()) return;
+        SeedOrigin("one");
+        var log = new CollectingLogger();
+        var source = new GitSkillSource("team", OriginUrl, "main", null, CacheRoot, log);
+        Directory.CreateDirectory(source.CacheDir);
+        File.WriteAllText(Path.Combine(source.CacheDir, "leftover.txt"), "from an interrupted clone");
+
+        var load = await source.LoadAsync(CancellationToken.None);
+
+        Assert.Equal(SkillSourceFreshness.Fresh, load.Freshness);
+        Assert.Single(load.Skills);
+        Assert.Contains(log.Entries, e => e.Message.Contains("has content but no checkout; clearing it"));
+        Assert.False(File.Exists(Path.Combine(source.CacheDir, "leftover.txt")));
+    }
+
+    [Fact]
+    public void Git_runs_without_credential_prompts()
+    {
+        var start = new ProcessStartInfo("git");
+
+        GitSkillSource.ConfigureNonInteractive(start);
+
+        Assert.Equal("0", start.Environment["GIT_TERMINAL_PROMPT"]);
+        Assert.Equal("never", start.Environment["GCM_INTERACTIVE"]);
+        Assert.Equal("", start.Environment["GIT_ASKPASS"]);
+    }
+
+    [Fact]
+    public void Authentication_failures_are_recognized_in_git_stderr()
+    {
+        Assert.True(GitSkillSource.LooksLikeAuthFailure("fatal: could not read Username for 'https://github.com': terminal prompts disabled"));
+        Assert.True(GitSkillSource.LooksLikeAuthFailure("remote: Repository not found.\nfatal: repository 'https://github.com/org/private.git/' not found"));
+        Assert.True(GitSkillSource.LooksLikeAuthFailure("fatal: Authentication failed for 'https://github.com/org/private.git/'"));
+        Assert.False(GitSkillSource.LooksLikeAuthFailure("fatal: destination path 'x' already exists and is not an empty directory."));
+        Assert.False(GitSkillSource.LooksLikeAuthFailure("fatal: unable to access 'https://github.com/': Could not resolve host: github.com"));
+    }
+
+    [Fact]
     public void Logged_url_has_credentials_in_userinfo_removed()
     {
         Assert.Equal("https://***@github.com/org/skills.git", GitSkillSource.RedactUrl("https://user:ghp_secret@github.com/org/skills.git"));
