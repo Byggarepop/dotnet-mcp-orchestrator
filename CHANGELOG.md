@@ -7,6 +7,18 @@ All notable changes to this project are documented here. The format is based on
 The release workflow reads the section matching the tag (e.g. `## [0.1.0]` for tag `v0.1.0`) and
 uses it as the GitHub Release notes — so keep an entry per released version.
 
+## [0.6.2] - 2026-10-11
+
+### Fixed
+- A skill source whose `${VAR}` placeholder has no value on the machine is now skipped with a
+  warning naming the variable, instead of scanning a literal `${...}` path. This makes a central
+  catalog with a per-project `directory` source (`"path": "${PROJECT_SKILLS_DIR}"`) work cleanly:
+  projects that set the variable get the skills, the rest skip the source.
+
+### Documentation
+- New "Central catalog with per-project skills" section in `docs/skills.md`, a pointer from the
+  migration guide, and a `project-skills` source in the central example config.
+
 ## [0.6.1] - 2026-10-10
 
 ### Fixed
