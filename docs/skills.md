@@ -83,14 +83,46 @@ disposable mirror that is hard-reset on every refresh. `http` fetches a discover
 enumerate supporting files — plain HTTP has no directory listing). Invalid skills are logged and
 skipped, never fatal; on a name collision the earlier source in config order wins. A skills
 section in a [central config](../McpOrchestrator/README.md#central-configuration) works too
-(`directory` sources with machine-local placeholders are rejected there), and config edits
-hot-reload like everything else.
+(see [Central catalog with per-project skills](#central-catalog-with-per-project-skills)), and
+config edits hot-reload like everything else.
 
 **Which source type do I want?** `directory` for skills on this machine (simplest — start here).
 `git` for a team-shared skills repo: someone merges a skill improvement, and every orchestrator
 polling that repo serves it within `pollSeconds` — review and versioning come free via normal
 PRs. `http` for published skill sets behind a plain URL. All three end up in the same in-memory
 snapshots and are served identically.
+
+## Central catalog with per-project skills
+
+One central config can carry both the team's shared skills and a slot for skills that live in
+each project. The central file names the sources; every `${VAR}` in them is resolved on the
+consuming machine from the orchestrator's env block, exactly like capabilities.
+
+1. In the central config, list the shared sources and one `directory` source whose path is a
+   variable:
+   ```jsonc
+   "skills": {
+     "sources": [
+       { "id": "team",    "type": "git",       "url": "https://github.com/org/skills.git", "ref": "main" },
+       { "id": "project", "type": "directory", "path": "${PROJECT_SKILLS_DIR}" }
+     ]
+   }
+   ```
+2. In each project's `.mcp.json`, set the variable in the orchestrator's env block:
+   ```jsonc
+   "env": {
+     "MCP_ORCHESTRATOR_CONFIG_URL": "https://devops.example.com/mcp/orchestrator.config.json",
+     "PROJECT_SKILLS_DIR": "C:/ProjectA/skills"
+   }
+   ```
+3. Projects that do not set the variable skip that source with a log line naming it; the shared
+   sources still load. A default such as `"${PROJECT_SKILLS_DIR:-C:/shared/skills}"` keeps the
+   source on every machine instead.
+
+Rules: `${CONFIG_DIR}` and `${SOLUTION_DIR}` are rejected in a central config (they are
+machine-local); use `${ENV_VAR}` or absolute paths. Order decides collisions — put the `project`
+source first if a project must be able to override a team skill of the same name, last if the
+team version should always win.
 
 ## Private git repos — do I need a token?
 

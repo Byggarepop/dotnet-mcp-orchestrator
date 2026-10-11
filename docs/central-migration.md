@@ -108,6 +108,10 @@ dotnet tool execute McpOrchestrator --yes init --central-url https://devops.exam
 Repeat for ProjectB with its own values. Commit only values that are the same on every
 developer's machine.
 
+Skills follow the same pattern: a `directory` source in the central `skills` section with
+`"path": "${PROJECT_SKILLS_DIR}"` serves whatever folder each project points the variable at
+(see [Central catalog with per-project skills](skills.md#central-catalog-with-per-project-skills)).
+
 Which key your IDE reads:
 
 | Host | File | Key |

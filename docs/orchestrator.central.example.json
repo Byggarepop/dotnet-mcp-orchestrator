@@ -37,7 +37,7 @@
       "connectTimeoutSeconds": 120
     }
   ],
-  "//skills": "A central catalog can also serve Agent Skills. Same machine-portability rule: directory sources with ${CONFIG_DIR}/${SOLUTION_DIR} are rejected — use git or http sources (secrets via ${ENV_VAR}, resolved on each consuming machine).",
+  "//skills": "A central catalog can also serve Agent Skills. Same machine-portability rule: directory sources with ${CONFIG_DIR}/${SOLUTION_DIR} are rejected — use git or http sources, or a directory source whose path is an ${ENV_VAR} that each project's host config sets (secrets likewise via ${ENV_VAR}, resolved on each consuming machine). A source whose variable has no value on a machine is skipped there with a log line naming the variable; the other sources still load.",
   "skills": {
     "enabled": true,
     "sources": [
@@ -46,6 +46,12 @@
         "type": "git",
         "url": "https://github.com/Byggarepop/dotnet-mcp-orchestrator.git",
         "ref": "main"
+      },
+      {
+        "id": "project-skills",
+        "//": "Per-project skills: set PROJECT_SKILLS_DIR in the env block of the orchestrator entry in that project's host config. Projects that do not set it simply skip this source.",
+        "type": "directory",
+        "path": "${PROJECT_SKILLS_DIR}"
       }
     ]
   }
