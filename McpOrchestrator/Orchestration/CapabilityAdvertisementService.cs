@@ -27,18 +27,22 @@ internal sealed class CapabilityAdvertisementService : IHostedService
     private readonly CapabilityRegistry _registry;
     private readonly ILogger<CapabilityAdvertisementService> _logger;
     private readonly Skills.SkillRegistry? _skills;
+    private readonly Skills.SkillsReloadService? _skillsConfig;
 
-    /// <param name="skills">Skill registry for the skills catalog line; null (e.g. in tests) omits it.</param>
+    /// <param name="skills">Skill registry for the skills-discovery hint; null (e.g. in tests) omits it.</param>
+    /// <param name="skillsConfig">Applied skills config, consulted for the catalog-tools delivery flag; null = tools assumed on.</param>
     public CapabilityAdvertisementService(
         IOptions<McpServerOptions> serverOptions,
         CapabilityRegistry registry,
         ILogger<CapabilityAdvertisementService> logger,
-        Skills.SkillRegistry? skills = null)
+        Skills.SkillRegistry? skills = null,
+        Skills.SkillsReloadService? skillsConfig = null)
     {
         _serverOptions = serverOptions;
         _registry = registry;
         _logger = logger;
         _skills = skills;
+        _skillsConfig = skillsConfig;
     }
 
     public Task StartAsync(CancellationToken cancellationToken)
@@ -52,28 +56,22 @@ internal sealed class CapabilityAdvertisementService : IHostedService
     /// <summary>Applies the advertisement to the given options (test seam).</summary>
     internal void Apply(McpServerOptions options, IReadOnlyList<CapabilityDescriptor> capabilities)
     {
-        var instructions = CapabilityAdvertisement.BuildServerInstructions(capabilities, out var overBudget);
-
-        // One line for the skill catalog when skills are loaded (SkillsReloadService starts
-        // before this service, so the registry is populated by now). Appended only when it fits
-        // the same render budget the capability block honors; the catalog stays reachable via
-        // list_skills either way.
+        // The skills-discovery hint is essential guidance, reserved before any capability text
+        // (SkillsReloadService starts before this service, so the registry is populated by now).
+        // It is emitted only when there is something to discover AND the catalog tools it names
+        // are actually exposed — telling an agent to call a disabled tool is worse than silence.
         var skillCount = _skills?.Current.Skills.Count ?? 0;
-        if (skillCount > 0)
+        var catalogToolsOn = _skillsConfig?.Delivery.CatalogTools ?? true;
+        var skillsHint = skillCount > 0 && catalogToolsOn ? CapabilityAdvertisement.SkillsHint(skillCount) : null;
+        if (skillCount > 0 && !catalogToolsOn)
         {
-            // With no capability block the skills line stands alone (minus its leading newline).
-            var skillLine = $"\n- skills: {skillCount} agent skill(s); call list_skills for the catalog";
-            if ((instructions?.Length ?? 0) + skillLine.Length <= CapabilityAdvertisement.MaxTotalInstructionsChars)
-            {
-                instructions = instructions is null ? skillLine.TrimStart('\n') : instructions + skillLine;
-            }
-            else
-            {
-                _logger.LogWarning("skills advertisement line omitted: instructions budget exhausted");
-            }
+            _logger.LogInformation(
+                "skills-discovery hint omitted from the handshake: {Count} skill(s) served but delivery.catalogTools is off",
+                skillCount);
         }
 
-        options.ServerInstructions = instructions;
+        var built = CapabilityAdvertisement.BuildServerInstructions(capabilities, skillsHint);
+        options.ServerInstructions = built.Text;
 
         if (options.ToolCollection is { } tools && tools.TryGetPrimitive("list_capabilities", out var tool))
         {
@@ -82,17 +80,35 @@ internal sealed class CapabilityAdvertisementService : IHostedService
         }
 
         _logger.LogInformation(
-            "Advertising {Count} capabilities in the initialize handshake ({Promoted} promoted)",
+            "Advertising {Count} capabilities in the initialize handshake ({Promoted} promoted, skills hint {Hint}, {Length} chars)",
             capabilities.Count,
-            capabilities.Count(c => c.Promote));
+            capabilities.Count(c => c.Promote),
+            skillsHint is null ? "omitted" : "included",
+            built.Text?.Length ?? 0);
 
-        if (overBudget.Count > 0)
+        if (built.SummariesShortened)
+        {
+            _logger.LogWarning(
+                "Advertisement base (header, skills hint, {Count} capability lines) exceeds {Budget} chars; " +
+                "capability summaries were shortened to fit. Shorten summaries in the config.",
+                capabilities.Count, CapabilityAdvertisement.MaxTotalInstructionsChars);
+        }
+
+        if (built.ExceedsBudget)
+        {
+            _logger.LogWarning(
+                "Advertisement block is {Length} chars even with minimal summaries, over the {Budget} budget; " +
+                "clients that truncate server instructions may cut it. Reduce the number of capabilities.",
+                built.Text!.Length, CapabilityAdvertisement.MaxTotalInstructionsChars);
+        }
+
+        if (built.OverBudgetPromoted.Count > 0)
         {
             _logger.LogWarning(
                 "Advertisement block exceeds {Budget} chars; promoted instructions of {Names} were " +
                 "truncated or omitted. Shorten summaries/instructions or promote fewer capabilities.",
                 CapabilityAdvertisement.MaxTotalInstructionsChars,
-                string.Join(", ", overBudget));
+                string.Join(", ", built.OverBudgetPromoted));
         }
     }
 }

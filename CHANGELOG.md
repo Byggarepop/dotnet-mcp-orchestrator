@@ -7,6 +7,30 @@ All notable changes to this project are documented here. The format is based on
 The release workflow reads the section matching the tag (e.g. `## [0.1.0]` for tag `v0.1.0`) and
 uses it as the GitHub Release notes — so keep an entry per released version.
 
+## [Unreleased]
+
+### Changed
+- The initialize handshake now reserves the essential guidance first — routing header, a short
+  skills-discovery hint (`list_skills` / `get_skill` / `get_skill_file`) and one line per
+  capability — and spends only the remainder of the budget on promoted instructions. Previously
+  the skills line was appended last and was dropped when capability text filled the budget. The
+  hint is omitted when no skills are served or `delivery.catalogTools` is off; if the base
+  itself overflows, summaries are shortened (with a warning) rather than any line dropped.
+- The handshake budget is raised from 1,900 to 3,800 characters after re-measuring the hosts
+  (2026-10-11): Claude Code 2.1.296 keeps 4,096 characters (about 2,048 in July), GitHub Copilot
+  CLI 1.0.70 passes 6,000 whole once the server is allowlisted for instructions, and VS Code's
+  Copilot agent applies no fixed cap. The README records the probe method.
+- Skill refresh logging now shows every stage: config change detected, sources added/removed/
+  changed (credentials reported as changed, never by value), git clone/fetch started (ref, cache
+  path, timeout) and completed (duration, commit; `checkout unchanged` vs `checkout updated
+  <old> -> <new>`), per-source contribution marked fresh or cached, and the rebuild trigger
+  (`startup`, `config-change`, `directory-change`, `scheduled-refresh`). A failed fetch states
+  whether the cached checkout keeps serving and when the next refresh is due. Clone URLs are
+  logged with userinfo redacted.
+
+### Documentation
+- New "Reading the log" section in `docs/skills.md`.
+
 ## [0.6.2] - 2026-10-11
 
 ### Fixed

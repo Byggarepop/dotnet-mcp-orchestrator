@@ -37,7 +37,7 @@ public sealed class HttpSkillSourceTests
         var baseUrl = server.Url.Replace("orchestrator.config.json", "index.json");
         using var source = new HttpSkillSource("cdn", new Uri(baseUrl), "Bearer secret-token", NullLogger.Instance);
 
-        var skills = await source.LoadAsync(CancellationToken.None);
+        var skills = (await source.LoadAsync(CancellationToken.None)).Skills;
 
         var skill = Assert.Single(skills);
         Assert.Equal("web-skill", skill.Name);
@@ -60,7 +60,7 @@ public sealed class HttpSkillSourceTests
         var baseUrl = server.Url.Replace("orchestrator.config.json", "index.json");
         using var source = new HttpSkillSource("cdn", new Uri(baseUrl), null, NullLogger.Instance);
 
-        var skills = await source.LoadAsync(CancellationToken.None);
+        var skills = (await source.LoadAsync(CancellationToken.None)).Skills;
 
         var skill = Assert.Single(skills);
         Assert.Single(skill.Files); // SKILL.md only; the traversal path was never requested.
@@ -75,6 +75,6 @@ public sealed class HttpSkillSourceTests
         var baseUrl = server.Url.Replace("orchestrator.config.json", "index.json");
         using var source = new HttpSkillSource("cdn", new Uri(baseUrl), null, NullLogger.Instance);
 
-        Assert.Empty(await source.LoadAsync(CancellationToken.None));
+        Assert.Empty((await source.LoadAsync(CancellationToken.None)).Skills);
     }
 }

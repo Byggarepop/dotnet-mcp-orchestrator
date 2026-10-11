@@ -1,0 +1,177 @@
+using System.Diagnostics;
+using McpOrchestrator.Orchestration.Skills;
+using Microsoft.Extensions.Logging;
+using Xunit;
+
+namespace McpOrchestrator.Tests;
+
+/// <summary>
+/// Drives <see cref="GitSkillSource"/> against a throwaway local repository (served over
+/// <c>file://</c>, which makes git honor <c>--depth</c> like a remote) and checks that each stage
+/// of a clone/refresh is told apart in the log: fresh clone, unchanged refresh, updated checkout,
+/// and failure with and without a cached checkout. Skipped when git is not on PATH.
+/// </summary>
+public sealed class GitSkillSourceTests : IDisposable
+{
+    private readonly string _root = Directory.CreateDirectory(
+        Path.Combine(Path.GetTempPath(), $"skills-git-{Guid.NewGuid():N}")).FullName;
+
+    private string Origin => Path.Combine(_root, "origin");
+    private string CacheRoot => Path.Combine(_root, "cache");
+    private string OriginUrl => new Uri(Origin).AbsoluteUri;
+
+    public void Dispose()
+    {
+        try { Directory.Delete(_root, recursive: true); } catch { /* best-effort cleanup */ }
+    }
+
+    [Fact]
+    public async Task First_load_clones_and_logs_start_and_completion_with_the_commit()
+    {
+        if (!GitAvailable()) return;
+        var head = SeedOrigin("one");
+        var log = new CollectingLogger();
+        var source = new GitSkillSource("team", OriginUrl, "main", null, CacheRoot, log, pollSeconds: 300);
+
+        var load = await source.LoadAsync(CancellationToken.None);
+
+        Assert.Equal(SkillSourceFreshness.Fresh, load.Freshness);
+        Assert.Equal("one", Assert.Single(load.Skills).Name);
+        var started = Assert.Single(log.Entries, e => e.Message.Contains("clone started"));
+        Assert.Contains("ref=main", started.Message);
+        Assert.Contains($"timeout={GitSkillSource.GitTimeoutSeconds}s", started.Message);
+        Assert.Contains(source.CacheDir, started.Message);
+        var completed = Assert.Single(log.Entries, e => e.Message.Contains("clone completed"));
+        Assert.Contains($"commit={head}", completed.Message);
+        Assert.Contains("duration=", completed.Message);
+        Assert.DoesNotContain(log.Entries, e => e.Message.Contains("fetch started"));
+    }
+
+    [Fact]
+    public async Task Refresh_without_remote_changes_reports_the_checkout_unchanged()
+    {
+        if (!GitAvailable()) return;
+        var head = SeedOrigin("one");
+        var log = new CollectingLogger();
+        var source = new GitSkillSource("team", OriginUrl, "main", null, CacheRoot, log);
+        await source.LoadAsync(CancellationToken.None);
+
+        var load = await source.LoadAsync(CancellationToken.None);
+
+        Assert.Equal(SkillSourceFreshness.Fresh, load.Freshness);
+        Assert.Single(log.Entries, e => e.Message.Contains("fetch started"));
+        var completed = Assert.Single(log.Entries, e => e.Message.Contains("refresh completed"));
+        Assert.Contains("checkout unchanged", completed.Message);
+        Assert.Contains($"commit={head}", completed.Message);
+    }
+
+    [Fact]
+    public async Task Refresh_after_a_remote_commit_reports_old_and_new_commits()
+    {
+        if (!GitAvailable()) return;
+        var first = SeedOrigin("one");
+        var log = new CollectingLogger();
+        var source = new GitSkillSource("team", OriginUrl, "main", null, CacheRoot, log);
+        await source.LoadAsync(CancellationToken.None);
+        var second = AddSkillToOrigin("two");
+
+        var load = await source.LoadAsync(CancellationToken.None);
+
+        Assert.Equal(2, load.Skills.Count); // same source, now one more skill
+        var completed = Assert.Single(log.Entries, e => e.Message.Contains("refresh completed"));
+        Assert.Contains("checkout updated", completed.Message);
+        Assert.Contains($"{first} -> {second}", completed.Message);
+    }
+
+    [Fact]
+    public async Task Failed_refresh_serves_the_cached_checkout_and_says_so()
+    {
+        if (!GitAvailable()) return;
+        var head = SeedOrigin("one");
+        var log = new CollectingLogger();
+        var source = new GitSkillSource("team", OriginUrl, "main", null, CacheRoot, log, pollSeconds: 120);
+        await source.LoadAsync(CancellationToken.None);
+        Directory.Move(Origin, Origin + "-gone"); // the remote disappears
+
+        var load = await source.LoadAsync(CancellationToken.None);
+
+        Assert.Equal(SkillSourceFreshness.Cached, load.Freshness);
+        Assert.Equal("one", Assert.Single(load.Skills).Name);
+        var warning = Assert.Single(log.Entries, e => e.Message.Contains("serving the cached checkout"));
+        Assert.Equal(LogLevel.Warning, warning.Level);
+        Assert.Contains($"commit {head}", warning.Message);
+        Assert.Contains("next refresh in 120s", warning.Message);
+        Assert.DoesNotContain(log.Entries, e => e.Message.Contains("refresh completed"));
+    }
+
+    [Fact]
+    public async Task Failed_clone_without_a_cache_yields_nothing_and_says_so()
+    {
+        if (!GitAvailable()) return;
+        var log = new CollectingLogger();
+        var source = new GitSkillSource("team", new Uri(Path.Combine(_root, "missing")).AbsoluteUri, null, null, CacheRoot, log, pollSeconds: 60);
+
+        var load = await source.LoadAsync(CancellationToken.None);
+
+        Assert.Equal(SkillSourceFreshness.Unavailable, load.Freshness);
+        Assert.Empty(load.Skills);
+        var warning = Assert.Single(log.Entries, e => e.Message.Contains("no usable checkout"));
+        Assert.Contains("next refresh in 60s", warning.Message);
+        Assert.DoesNotContain(log.Entries, e => e.Message.Contains("clone completed"));
+    }
+
+    [Fact]
+    public void Logged_url_has_credentials_in_userinfo_removed()
+    {
+        Assert.Equal("https://***@github.com/org/skills.git", GitSkillSource.RedactUrl("https://user:ghp_secret@github.com/org/skills.git"));
+        Assert.Equal("https://github.com/org/skills.git", GitSkillSource.RedactUrl("https://github.com/org/skills.git"));
+        Assert.Equal("git@github.com:org/skills.git", GitSkillSource.RedactUrl("git@github.com:org/skills.git"));
+    }
+
+    // ----- helpers --------------------------------------------------------------------------------
+
+    private static bool GitAvailable()
+    {
+        try
+        {
+            using var p = Process.Start(new ProcessStartInfo("git", "--version") { RedirectStandardOutput = true, UseShellExecute = false });
+            p!.WaitForExit();
+            return p.ExitCode == 0;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    /// <summary>Creates the origin repo with one skill on <c>main</c>; returns HEAD.</summary>
+    private string SeedOrigin(string skill)
+    {
+        Directory.CreateDirectory(Origin);
+        Git("init", "-q", "-b", "main");
+        Git("config", "user.email", "test@example.com");
+        Git("config", "user.name", "Test");
+        return AddSkillToOrigin(skill);
+    }
+
+    private string AddSkillToOrigin(string skill)
+    {
+        var dir = Directory.CreateDirectory(Path.Combine(Origin, skill)).FullName;
+        File.WriteAllText(Path.Combine(dir, "SKILL.md"), $"---\nname: {skill}\ndescription: Skill {skill}.\n---\nbody");
+        Git("add", ".");
+        Git("commit", "-q", "-m", $"add {skill}");
+        return Git("rev-parse", "HEAD").Trim();
+    }
+
+    private string Git(params string[] args)
+    {
+        var start = new ProcessStartInfo("git") { WorkingDirectory = Origin, RedirectStandardOutput = true, RedirectStandardError = true, UseShellExecute = false };
+        foreach (var a in args) start.ArgumentList.Add(a);
+        using var p = Process.Start(start)!;
+        var stdout = p.StandardOutput.ReadToEnd();
+        var stderr = p.StandardError.ReadToEnd();
+        p.WaitForExit();
+        Assert.True(p.ExitCode == 0, $"git {string.Join(' ', args)} failed: {stderr}");
+        return stdout;
+    }
+}
