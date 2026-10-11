@@ -741,11 +741,14 @@ client renders without being asked:
 (observed on 2.1.x, July 2026 — inferred behavior, not documented protocol; re-measured
 occasionally) keeps roughly 2,048 characters of server instructions and silently truncates the
 rest mid-sentence. The orchestrator therefore stays under that itself, spending the budget in
-priority order: the header and every name/summary line first (the minimum viable scent, never
-dropped), then promoted instructions in catalog order. The first entry that doesn't fit is
-truncated with the `list_capabilities` pointer and any later promoted entries are omitted — a
-visible cut beats a silent client-side one — and a startup warning names the affected
-capabilities.
+priority order: the essential guidance first — the routing header, a one-line skills-discovery
+hint when [skills](../docs/skills.md) are served through the catalog tools, and every
+name/summary line (the minimum viable scent, never dropped) — then promoted instructions in
+catalog order. The first entry that doesn't fit is truncated with the `list_capabilities` pointer
+and any later promoted entries are omitted — a visible cut beats a silent client-side one — and
+a startup warning names the affected capabilities. Should the essential part alone overflow
+(many capabilities with long summaries), summaries are shortened with a warning rather than any
+line dropped.
 
 Keep `promote` **opt-in and rare**: everything hoisted into the handshake is paid for in every
 session's context, which is exactly the cost the orchestrator exists to avoid. Promotion is for

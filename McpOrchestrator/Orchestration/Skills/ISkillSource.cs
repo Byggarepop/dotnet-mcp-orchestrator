@@ -12,8 +12,34 @@ internal interface ISkillSource
     /// <summary>The source's config id (audit logs, cache folders).</summary>
     string Id { get; }
 
-    /// <summary>Loads the source's current skills.</summary>
-    Task<IReadOnlyList<SkillSnapshot>> LoadAsync(CancellationToken cancellationToken);
+    /// <summary>Loads the source's current skills, reporting where the content came from.</summary>
+    Task<SkillSourceLoad> LoadAsync(CancellationToken cancellationToken);
+}
+
+/// <summary>Where the skills returned by one <see cref="ISkillSource.LoadAsync"/> call came from.</summary>
+internal enum SkillSourceFreshness
+{
+    /// <summary>Read from the live origin this pass (a directory scan, a successful clone/fetch, an HTTP index fetch).</summary>
+    Fresh,
+
+    /// <summary>The origin could not be reached; an earlier successful copy was served instead.</summary>
+    Cached,
+
+    /// <summary>The origin could not be reached and no earlier copy exists; the source yielded nothing.</summary>
+    Unavailable,
+}
+
+/// <summary>
+/// The outcome of one source load: the skills plus how current they are. Same skill count can
+/// mean a fresh download or a stale cache; the freshness tells the two apart in the log.
+/// </summary>
+internal sealed record SkillSourceLoad(IReadOnlyList<SkillSnapshot> Skills, SkillSourceFreshness Freshness)
+{
+    public static SkillSourceLoad Fresh(IReadOnlyList<SkillSnapshot> skills) => new(skills, SkillSourceFreshness.Fresh);
+
+    public static SkillSourceLoad Cached(IReadOnlyList<SkillSnapshot> skills) => new(skills, SkillSourceFreshness.Cached);
+
+    public static SkillSourceLoad Unavailable() => new([], SkillSourceFreshness.Unavailable);
 }
 
 /// <summary>A skill source rooted at a local directory, scanned recursively.</summary>
@@ -34,6 +60,6 @@ internal sealed class DirectorySkillSource : ISkillSource
     /// <summary>The scanned root, watched by <see cref="SkillsReloadService"/> for live edits.</summary>
     internal string Path => _path;
 
-    public Task<IReadOnlyList<SkillSnapshot>> LoadAsync(CancellationToken cancellationToken)
-        => Task.FromResult(SkillDirectoryScanner.Scan(_path, Id, _logger));
+    public Task<SkillSourceLoad> LoadAsync(CancellationToken cancellationToken)
+        => Task.FromResult(SkillSourceLoad.Fresh(SkillDirectoryScanner.Scan(_path, Id, _logger)));
 }

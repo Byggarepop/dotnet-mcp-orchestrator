@@ -52,6 +52,9 @@ internal sealed class ConfigReloader
     {
         try
         {
+            // Logged before load/validate/apply so the detection itself is visible even when a
+            // later stage (a slow skill-source fetch, say) takes a while or fails.
+            _logger.LogInformation("Config change detected: {Source}; reload starting.", _source.Description);
             var loaded = await _source.TryLoadAsync(cancellationToken);
             if (loaded is null)
             {

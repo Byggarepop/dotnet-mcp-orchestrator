@@ -32,7 +32,7 @@ internal sealed class HttpSkillSource : ISkillSource, IDisposable
 
     public string Id { get; }
 
-    public async Task<IReadOnlyList<SkillSnapshot>> LoadAsync(CancellationToken cancellationToken)
+    public async Task<SkillSourceLoad> LoadAsync(CancellationToken cancellationToken)
     {
         SkillIndexDocument? index;
         try
@@ -42,8 +42,8 @@ internal sealed class HttpSkillSource : ISkillSource, IDisposable
         }
         catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or JsonException or InvalidDataException)
         {
-            _logger.LogWarning("skill source {Source}: failed to fetch or parse index {Url}: {Message}", Id, _indexUrl, ex.Message);
-            return [];
+            _logger.LogWarning("skill source {Source}: failed to fetch or parse index {Url}: {Message}; no skills loaded (http sources keep no cache)", Id, _indexUrl, ex.Message);
+            return SkillSourceLoad.Unavailable();
         }
 
         var skills = new List<SkillSnapshot>();
@@ -67,7 +67,7 @@ internal sealed class HttpSkillSource : ISkillSource, IDisposable
             }
         }
 
-        return skills;
+        return SkillSourceLoad.Fresh(skills);
     }
 
     private async Task<SkillSnapshot?> TryLoadEntryAsync(SkillIndexEntry entry, CancellationToken cancellationToken)

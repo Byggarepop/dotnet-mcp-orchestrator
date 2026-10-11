@@ -50,8 +50,9 @@ Skills are used *by the agent* — you write a folder, the agent finds and follo
 **Verifying without an agent** (optional): the MCP Inspector can drive the same tools by hand —
 `npx @modelcontextprotocol/inspector -e MCP_ORCHESTRATOR_CONFIG=<path-to-config> mcp-orchestrator`
 (the `-e` matters: the Inspector does not forward your shell's environment to the server it
-spawns). On connect, the server's stderr shows `skill catalog rebuilt: N skill(s) served (…)`; an
-empty `list_skills` result means the server loaded a different config than you intended.
+spawns). On connect, the server's stderr shows `skill catalog rebuilt: N skill(s) served; trigger=startup; …`
+(see [Reading the log](#reading-the-log)); an empty `list_skills` result means the server loaded a
+different config than you intended.
 
 ## Configuration
 
@@ -254,3 +255,38 @@ Any trigger (file event, poll tick, config change) rebuilds all sources into a c
 catalog, then swaps a single reference — readers never lock, in-flight requests finish against the
 old catalog, and a failed rebuild keeps the last good one (same last-known-good philosophy as the
 capability config reload).
+
+### Reading the log
+
+Each stage of a refresh is its own line, so a change can be followed from detection to the served
+catalog without guessing, and a fresh download is distinguishable from a reused cache even when
+the skill count is the same. A central config edit that renames a git source looks like this
+(stderr and the [log file](../McpOrchestrator/README.md#logs); shortened):
+
+```
+info Config change detected: https://…/orchestrator.central.json; reload starting.
+info skills config apply starting; trigger=config-change; 2 source(s) configured (git3:git, project-skills:directory)
+info skill source removed: git2
+info skill source added: git3 (git)
+info skill source git3: clone started; url=https://github.com/org/skills.git; ref=main; cache=…\skills-cache\git3; timeout=60s
+info skill source git3: clone completed; duration=1840ms; commit=9f2c3a…
+info skill source git3: 26 skill(s) loaded from fresh content
+info skill source project-skills: 2 skill(s) loaded from fresh content
+info skill catalog rebuilt: 28 skill(s) served; trigger=config-change; sources: git3=26 fresh content, project-skills=2 fresh content (…)
+info Config reloaded from https://…: 0 added, 0 removed, …
+```
+
+- **Trigger** is one of `startup`, `config-change` (file watcher or central poll), `directory-change`
+  (a file event under a `directory` source) or `scheduled-refresh` (a git/http poll tick).
+- **Source changes** are reported per id before any slow work: added, removed, or changed with the
+  differing fields (`path`, `url`, `ref`, `indexUrl`, `pollSeconds`). A token or authorization
+  change is reported as `token changed`, never by value; URLs are logged with any userinfo removed.
+- **Git refreshes** log `fetch started`, then `refresh completed; checkout unchanged; commit=…` or
+  `refresh completed; checkout updated; <old> -> <new>`. A timed-out or failed fetch logs the git
+  error and then either `serving the cached checkout at commit …; next refresh in Ns` (last-known-good)
+  or `no usable checkout …; source yields no skills` — never a success-shaped line.
+- **Contribution** per source says `fresh content`, `cached content (origin unreachable)` or
+  `nothing (origin unreachable, no cache)`, and the `rebuilt` line repeats them.
+
+Session startup also logs whether the skills-discovery hint made it into the handshake:
+`Advertising N capabilities in the initialize handshake (… skills hint included, 1612 chars)`.

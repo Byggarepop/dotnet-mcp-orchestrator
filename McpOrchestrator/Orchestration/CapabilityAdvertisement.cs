@@ -22,9 +22,10 @@ internal static class CapabilityAdvertisement
     /// 2026-07-13) renders roughly 2,048 chars of server instructions and silently truncates the
     /// tail with its own note — an inferred client behavior, not documented protocol, so
     /// re-measure occasionally and adjust. 1,900 leaves a safety margin under that cap. Spent in
-    /// priority order: header and every name/summary line first (the minimum viable scent), then
-    /// promoted instructions in catalog order; the first entry that does not fit is truncated
-    /// with a note and the rest are omitted — a visible cut beats a silent client-side one.
+    /// priority order: the essential guidance first — the routing header, the skills-discovery
+    /// hint (when skills are served) and one name/summary line per capability — then promoted
+    /// instructions in catalog order; the first entry that does not fit is truncated with a note
+    /// and the rest are omitted — a visible cut beats a silent client-side one.
     /// </summary>
     internal const int MaxTotalInstructionsChars = 1_900;
 
@@ -44,10 +45,33 @@ internal static class CapabilityAdvertisement
     /// <summary>Per-capability cap on the summary line inside the server instructions.</summary>
     internal const int MaxSummaryChars = 300;
 
+    /// <summary>
+    /// Floor for the summary cap when the essential base itself overflows the budget: below this
+    /// a summary carries no scent, so the block is allowed to exceed the budget (with a warning)
+    /// rather than cut summaries further or drop a capability line or the skills hint.
+    /// </summary>
+    internal const int MinSummaryChars = 40;
+
     /// <summary>Per-capability cap on the summary inside the tool-description suffix.</summary>
     internal const int MaxScentSummaryChars = 120;
 
     private const string TruncationNote = " … [truncated — call 'list_capabilities' for the full instructions]";
+
+    private const string Header =
+        "This orchestrator proxies the downstream MCP capabilities below: call " +
+        "'list_capabilities' for the catalog, 'discover_tools' for a capability's tool " +
+        "schemas, then 'route' to invoke. Example: " +
+        "{\"capability\":\"<name>\",\"tool\":\"<tool>\",\"arguments\":{\"key\":\"value\"}} " +
+        "— the parameter is 'arguments', not 'args'.\n";
+
+    /// <summary>
+    /// The skills-discovery hint for <paramref name="skillCount"/> served skills. Short on
+    /// purpose: it names the three catalog tools and nothing else — skill names and bodies are
+    /// fetched on demand through those tools, never pushed into the handshake.
+    /// </summary>
+    public static string SkillsHint(int skillCount) =>
+        $"Agent skills are available ({skillCount}): call 'list_skills' to find relevant skills, " +
+        "'get_skill' to load one's instructions, and 'get_skill_file' for its supporting files.";
 
     /// <summary>
     /// Builds the server-level instructions block returned by the MCP initialize handshake, or
@@ -66,31 +90,55 @@ internal static class CapabilityAdvertisement
     public static string? BuildServerInstructions(
         IReadOnlyList<CapabilityDescriptor> capabilities, out IReadOnlyList<string> overBudget)
     {
-        overBudget = Array.Empty<string>();
+        var result = BuildServerInstructions(capabilities, skillsHint: null);
+        overBudget = result.OverBudgetPromoted;
+        return result.Text;
+    }
+
+    /// <summary>
+    /// Builds the server-level instructions block with the essential guidance reserved first:
+    /// the routing header, <paramref name="skillsHint"/> (<c>null</c> = no skills served, or the
+    /// catalog tools are off) and one line per capability are always present; promoted
+    /// instructions spend only what remains. With no capabilities the hint stands alone; with
+    /// neither, <see cref="ServerInstructions.Text"/> is <c>null</c>.
+    /// </summary>
+    public static ServerInstructions BuildServerInstructions(
+        IReadOnlyList<CapabilityDescriptor> capabilities, string? skillsHint)
+    {
         if (capabilities.Count == 0)
         {
-            return null;
+            return new ServerInstructions(skillsHint, Array.Empty<string>(), SummariesShortened: false);
         }
 
         // '\n' throughout (not AppendLine): the block must be byte-identical across platforms.
-        // Pass 1 — render the unconditional base: the header and one name/summary line per
-        // capability. These are the minimum viable scent and are never dropped; the total
-        // budget applies to what the promoted instructions may add on top.
-        const string header =
-            "This orchestrator proxies the downstream MCP capabilities below: call " +
-            "'list_capabilities' for the catalog, 'discover_tools' for a capability's tool " +
-            "schemas, then 'route' to invoke. Example: " +
-            "{\"capability\":\"<name>\",\"tool\":\"<tool>\",\"arguments\":{\"key\":\"value\"}} " +
-            "— the parameter is 'arguments', not 'args'.\n\nCapabilities:\n";
-        var summaryLines = capabilities.Select(c => string.IsNullOrWhiteSpace(c.Summary)
-            ? $"- {c.Name}\n"
-            : $"- {c.Name}: {Truncate(OneLine(c.Summary), MaxSummaryChars, " …")}\n").ToList();
-        var remaining = MaxTotalInstructionsChars - header.Length - summaryLines.Sum(l => l.Length);
+        // Pass 1 — the unconditional base: header, skills hint, "Capabilities:" and one
+        // name/summary line per capability. Its length is measured, not estimated, so the
+        // promoted-instructions budget is exactly what the base leaves over.
+        // Every line ends in '\n' and the block's final one is trimmed off, so the budget check
+        // counts one char less than the rendered lines add up to.
+        const int trimmedTrailingNewline = 1;
+        var fixedPart = Header + (skillsHint is null ? "" : "\n" + skillsHint + "\n") + "\nCapabilities:\n";
+        var summaryCap = MaxSummaryChars;
+        var summaryLines = RenderSummaryLines(capabilities, summaryCap);
+        var remaining = MaxTotalInstructionsChars + trimmedTrailingNewline - fixedPart.Length - summaryLines.Sum(l => l.Length);
+
+        // The base itself can overflow (many capabilities with long summaries). Summaries are the
+        // only optional text in it, so shrink their cap until the base fits — down to a floor,
+        // after which the block may exceed the budget: dropping a capability line or the skills
+        // hint would be a silent omission, which is the worse failure.
+        var shortened = false;
+        while (remaining < 0 && summaryCap > MinSummaryChars)
+        {
+            summaryCap = Math.Max(MinSummaryChars, summaryCap - 20);
+            summaryLines = RenderSummaryLines(capabilities, summaryCap);
+            remaining = MaxTotalInstructionsChars + trimmedTrailingNewline - fixedPart.Length - summaryLines.Sum(l => l.Length);
+            shortened = true;
+        }
 
         // Pass 2 — assemble, spending the remaining budget on promoted instructions in catalog
         // order (each block sits under its capability's summary line). The first entry that
         // does not fit is truncated with the note; every later promoted entry is omitted.
-        var sb = new StringBuilder(header);
+        var sb = new StringBuilder(fixedPart);
         var dropped = new List<string>();
         for (var i = 0; i < capabilities.Count; i++)
         {
@@ -124,13 +172,13 @@ internal static class CapabilityAdvertisement
             }
         }
 
-        if (dropped.Count > 0)
-        {
-            overBudget = dropped;
-        }
-
-        return sb.ToString().TrimEnd();
+        return new ServerInstructions(sb.ToString().TrimEnd(), dropped, shortened);
     }
+
+    private static List<string> RenderSummaryLines(IReadOnlyList<CapabilityDescriptor> capabilities, int summaryCap) =>
+        capabilities.Select(c => string.IsNullOrWhiteSpace(c.Summary)
+            ? $"- {c.Name}\n"
+            : $"- {c.Name}: {Truncate(OneLine(c.Summary), summaryCap, " …")}\n").ToList();
 
     /// <summary>Renders one promoted capability's instructions as an indented block ending in '\n'.</summary>
     private static string RenderPromotedEntry(CapabilityDescriptor capability)
@@ -170,4 +218,14 @@ internal static class CapabilityAdvertisement
 
     private static string Truncate(string text, int maxChars, string note) =>
         text.Length <= maxChars ? text : text[..maxChars] + note;
+}
+
+/// <summary>The rendered server instructions plus what the budget cost.</summary>
+/// <param name="Text">The block, or <c>null</c> when there is nothing to advertise.</param>
+/// <param name="OverBudgetPromoted">Promoted capabilities whose instructions were truncated or omitted, in catalog order.</param>
+/// <param name="SummariesShortened">True when the essential base overflowed and summaries were cut below <see cref="CapabilityAdvertisement.MaxSummaryChars"/>.</param>
+internal sealed record ServerInstructions(string? Text, IReadOnlyList<string> OverBudgetPromoted, bool SummariesShortened)
+{
+    /// <summary>True when the block exceeds <see cref="CapabilityAdvertisement.MaxTotalInstructionsChars"/> even with minimal summaries.</summary>
+    public bool ExceedsBudget => (Text?.Length ?? 0) > CapabilityAdvertisement.MaxTotalInstructionsChars;
 }

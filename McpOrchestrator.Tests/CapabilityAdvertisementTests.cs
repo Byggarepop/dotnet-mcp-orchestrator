@@ -252,6 +252,182 @@ public sealed class CapabilityAdvertisementTests
         Assert.Contains("guard (Convention guard.)", tool.ProtocolTool.Description);
     }
 
+    // ----- Skills-discovery hint and the reserved essential base ----------------------------------
+
+    private static string Summary(int length) => new string('s', length);
+
+    private static CapabilityDescriptor[] NineCapabilities(bool promoteOne = true) =>
+        Enumerable.Range(1, 9)
+            .Select(i => Cap(
+                $"capability-{i}",
+                $"Capability number {i}. " + Summary(100),
+                instructions: i == 1 ? "CALL THIS WHEN: the task touches capability one. " + Summary(100) : null,
+                promote: promoteOne && i == 1))
+            .ToArray();
+
+    [Fact]
+    public void Skills_hint_is_reserved_before_capability_text_and_the_block_fits()
+    {
+        var hint = CapabilityAdvertisement.SkillsHint(26);
+
+        var built = CapabilityAdvertisement.BuildServerInstructions(NineCapabilities(), hint);
+
+        Assert.NotNull(built.Text);
+        Assert.Contains(hint, built.Text);
+        Assert.True(built.Text!.Length <= CapabilityAdvertisement.MaxTotalInstructionsChars, $"length {built.Text.Length}");
+        Assert.False(built.SummariesShortened);
+        Assert.False(built.ExceedsBudget);
+        // Essential guidance comes first: routing header, then the hint, then the capability list.
+        Assert.True(built.Text.IndexOf("'route' to invoke", StringComparison.Ordinal) < built.Text.IndexOf(hint, StringComparison.Ordinal));
+        Assert.True(built.Text.IndexOf(hint, StringComparison.Ordinal) < built.Text.IndexOf("Capabilities:", StringComparison.Ordinal));
+        for (var i = 1; i <= 9; i++)
+        {
+            Assert.Contains($"- capability-{i}: Capability number {i}.", built.Text);
+        }
+    }
+
+    [Fact]
+    public void Skills_hint_survives_when_promoted_instructions_overflow_the_budget()
+    {
+        var hint = CapabilityAdvertisement.SkillsHint(3);
+        var capabilities = new[]
+        {
+            Cap("big", "A.", instructions: new string('a', CapabilityAdvertisement.MaxPromotedInstructionsChars), promote: true),
+            Cap("late", "B.", instructions: "LATE-MARKER", promote: true),
+        };
+
+        var built = CapabilityAdvertisement.BuildServerInstructions(capabilities, hint);
+
+        Assert.Contains(hint, built.Text);
+        Assert.Contains("- late: B.", built.Text);
+        Assert.Equal(new[] { "big", "late" }, built.OverBudgetPromoted);
+        Assert.True(built.Text!.Length <= CapabilityAdvertisement.MaxTotalInstructionsChars);
+    }
+
+    [Fact]
+    public void Base_exactly_at_the_budget_is_kept_whole_and_one_more_char_shortens_summaries()
+    {
+        var hint = CapabilityAdvertisement.SkillsHint(26);
+        var capabilities = NineCapabilities(promoteOne: false);
+        var probe = CapabilityAdvertisement.BuildServerInstructions(capabilities, hint);
+        var slack = CapabilityAdvertisement.MaxTotalInstructionsChars - probe.Text!.Length;
+        Assert.InRange(slack, 1, 9 * (CapabilityAdvertisement.MaxSummaryChars - 100 - 30)); // spread below, each summary stays under its cap
+        CapabilityDescriptor[] Padded(int extra) => Enumerable.Range(1, 9)
+            .Select(i => Cap($"capability-{i}", $"Capability number {i}. " + Summary(100 + extra / 9 + (i == 9 ? extra % 9 : 0))))
+            .ToArray();
+        capabilities = Padded(slack);
+
+        var exact = CapabilityAdvertisement.BuildServerInstructions(capabilities, hint);
+
+        Assert.Equal(CapabilityAdvertisement.MaxTotalInstructionsChars, exact.Text!.Length);
+        Assert.False(exact.SummariesShortened);
+        Assert.Contains(hint, exact.Text);
+        Assert.EndsWith(Summary(100 + slack / 9 + slack % 9), exact.Text);
+
+        capabilities = Padded(slack + 1);
+        var over = CapabilityAdvertisement.BuildServerInstructions(capabilities, hint);
+
+        Assert.True(over.SummariesShortened);
+        Assert.True(over.Text!.Length <= CapabilityAdvertisement.MaxTotalInstructionsChars, $"length {over.Text.Length}");
+        Assert.Contains(hint, over.Text);
+        Assert.Contains("- capability-9: ", over.Text);
+    }
+
+    [Fact]
+    public void Overflowing_base_shortens_summaries_but_keeps_every_capability_and_the_hint()
+    {
+        var hint = CapabilityAdvertisement.SkillsHint(26);
+        var capabilities = Enumerable.Range(1, 12)
+            .Select(i => Cap($"cap-{i}", $"Capability {i}. " + Summary(CapabilityAdvertisement.MaxSummaryChars)))
+            .ToArray();
+
+        var built = CapabilityAdvertisement.BuildServerInstructions(capabilities, hint);
+
+        Assert.True(built.SummariesShortened);
+        Assert.False(built.ExceedsBudget);
+        Assert.True(built.Text!.Length <= CapabilityAdvertisement.MaxTotalInstructionsChars, $"length {built.Text.Length}");
+        Assert.Contains(hint, built.Text);
+        for (var i = 1; i <= 12; i++)
+        {
+            Assert.Contains($"- cap-{i}: Capability {i}.", built.Text);
+        }
+    }
+
+    [Fact]
+    public void Base_too_large_even_with_minimal_summaries_exceeds_the_budget_visibly_instead_of_dropping_lines()
+    {
+        var hint = CapabilityAdvertisement.SkillsHint(26);
+        var capabilities = Enumerable.Range(1, 40)
+            .Select(i => Cap($"capability-number-{i}", $"Capability {i}. " + Summary(CapabilityAdvertisement.MaxSummaryChars)))
+            .ToArray();
+
+        var built = CapabilityAdvertisement.BuildServerInstructions(capabilities, hint);
+
+        Assert.True(built.ExceedsBudget);
+        Assert.True(built.SummariesShortened);
+        Assert.Empty(built.OverBudgetPromoted);
+        Assert.Contains(hint, built.Text);
+        Assert.Equal(40, capabilities.Count(c => built.Text!.Contains($"- {c.Name}: ", StringComparison.Ordinal)));
+    }
+
+    [Fact]
+    public void No_capabilities_leaves_the_hint_alone_and_nothing_at_all_yields_null()
+    {
+        var hint = CapabilityAdvertisement.SkillsHint(2);
+
+        Assert.Equal(hint, CapabilityAdvertisement.BuildServerInstructions(Array.Empty<CapabilityDescriptor>(), hint).Text);
+        Assert.Null(CapabilityAdvertisement.BuildServerInstructions(Array.Empty<CapabilityDescriptor>(), null).Text);
+    }
+
+    [Fact]
+    public async Task Service_includes_the_hint_only_when_skills_are_served_and_catalog_tools_are_on()
+    {
+        var root = Directory.CreateDirectory(Path.Combine(Path.GetTempPath(), $"adv-skills-{Guid.NewGuid():N}")).FullName;
+        try
+        {
+            File.WriteAllText(
+                Path.Combine(Directory.CreateDirectory(Path.Combine(root, "one")).FullName, "SKILL.md"),
+                "---\nname: one\ndescription: One.\n---\nbody");
+            var skillRegistry = new McpOrchestrator.Orchestration.Skills.SkillRegistry();
+            var capabilityRegistry = new CapabilityRegistry(CapabilityCatalog.FromDescriptors(NineCapabilities(), NullLogger.Instance));
+            using var skills = new McpOrchestrator.Orchestration.Skills.SkillsReloadService(
+                skillRegistry, capabilityRegistry, NullLogger<McpOrchestrator.Orchestration.Skills.SkillsReloadService>.Instance);
+            var log = new CollectingLogger();
+            var service = new CapabilityAdvertisementService(
+                Microsoft.Extensions.Options.Options.Create(new McpServerOptions()), capabilityRegistry,
+                new WrappingLogger<CapabilityAdvertisementService>(log), skillRegistry, skills);
+
+            // Empty catalog: no hint, and no mention of the skill tools anywhere.
+            var options = new McpServerOptions();
+            service.Apply(options, capabilityRegistry.Capabilities);
+            Assert.DoesNotContain("list_skills", options.ServerInstructions);
+
+            // One skill, catalog tools on (default): the hint is in the final block, which fits.
+            var skillsOptions = new McpOrchestrator.Orchestration.Skills.SkillsOptions
+            {
+                Sources = { new McpOrchestrator.Orchestration.Skills.SkillSourceOptions { Id = "local", Type = "directory", Path = root } },
+            };
+            await skills.ApplyAsync(skillsOptions, CancellationToken.None);
+            options = new McpServerOptions();
+            service.Apply(options, capabilityRegistry.Capabilities);
+            Assert.Contains(CapabilityAdvertisement.SkillsHint(1), options.ServerInstructions);
+            Assert.True(options.ServerInstructions!.Length <= CapabilityAdvertisement.MaxTotalInstructionsChars);
+
+            // Catalog tools off: skills are served (as resources) but the tools are not callable,
+            // so the hint must not tell the agent to call them.
+            skillsOptions.Delivery.CatalogTools = false;
+            await skills.ApplyAsync(skillsOptions, CancellationToken.None);
+            options = new McpServerOptions();
+            service.Apply(options, capabilityRegistry.Capabilities);
+            Assert.DoesNotContain("list_skills", options.ServerInstructions);
+            Assert.Contains(log.Entries, e => e.Message.Contains("delivery.catalogTools is off"));
+        }
+        finally
+        {
+            try { Directory.Delete(root, recursive: true); } catch { /* best-effort cleanup */ }
+        }
+    }
+
     // ----- Acceptance: the committed central example ----------------------------------------------
 
     [Fact]
@@ -277,5 +453,14 @@ public sealed class CapabilityAdvertisementTests
         // budget exists because Claude Code truncates the rendered block at ~2,048 chars.
         Assert.Empty(overBudget);
         Assert.True(text!.Length <= CapabilityAdvertisement.MaxTotalInstructionsChars);
+
+        // And with a realistic skill catalog on top, the hint must fit alongside the full trigger text.
+        var withSkills = CapabilityAdvertisement.BuildServerInstructions(
+            loaded.Catalog.Capabilities, CapabilityAdvertisement.SkillsHint(26));
+        Assert.Contains("list_skills", withSkills.Text);
+        Assert.Contains("check_holes", withSkills.Text);
+        Assert.Empty(withSkills.OverBudgetPromoted);
+        Assert.False(withSkills.SummariesShortened);
+        Assert.True(withSkills.Text!.Length <= CapabilityAdvertisement.MaxTotalInstructionsChars);
     }
 }
