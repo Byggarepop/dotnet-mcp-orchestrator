@@ -7,6 +7,20 @@ All notable changes to this project are documented here. The format is based on
 The release workflow reads the section matching the tag (e.g. `## [0.1.0]` for tag `v0.1.0`) and
 uses it as the GitHub Release notes — so keep an entry per released version.
 
+## [Unreleased]
+
+### Fixed
+- Git skill sources now hold a lock file per cache folder, so several orchestrator processes
+  (hosts start one per window and restart them all on a config change) no longer race into the
+  same clone: the first instance clones, the others wait and reuse its checkout. Previously the
+  losers failed with `destination path … already exists and is not an empty directory`.
+- Git runs without credential prompts (`GIT_TERMINAL_PROMPT=0`, `GCM_INTERACTIVE=never`, askpass
+  off). A private repo with no stored credential or `token` now fails within a second with the git
+  error and a log line naming the fix, instead of hanging until the 60-second timeout killed it.
+- A cache folder with content but no `.git` (an interrupted clone) is cleared before cloning
+  rather than making every later clone fail.
+- Local git probes (`rev-parse`) use a 10-second timeout instead of 60.
+
 ## [0.7.0] - 2026-10-11
 
 ### Changed

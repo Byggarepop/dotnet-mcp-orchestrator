@@ -11,15 +11,33 @@ namespace McpOrchestrator.Orchestration.Skills;
 /// A machine without <c>git</c> logs a warning and yields no skills; never fatal.
 /// </summary>
 /// <remarks>
-/// Every stage is logged so a refresh can be followed without guessing: clone or fetch started
-/// (ref, cache path, timeout), completed (duration, commit; for a refresh whether the checkout
-/// changed), and on failure whether a cached checkout keeps serving. The URL is logged with any
-/// userinfo removed and the token never appears anywhere.
+/// <para>The cache folder is shared by every orchestrator process on the machine (hosts routinely
+/// run several at once, and restart them all when the config changes), so the sync holds a lock
+/// file next to the folder: the first instance clones or fetches, the others wait and then scan
+/// the result instead of racing into the same directory.</para>
+/// <para>Git runs non-interactively: credential prompts are disabled so a missing credential fails
+/// in a second with a clear error instead of hanging until the timeout kills it. Stored
+/// credentials (a credential helper's cache, or the <c>token</c> option) still work.</para>
+/// <para>Every stage is logged so a refresh can be followed without guessing: clone or fetch
+/// started (ref, cache path, timeout), completed (duration, commit; for a refresh whether the
+/// checkout changed), and on failure whether a cached checkout keeps serving. The URL is logged
+/// with any userinfo removed and the token never appears anywhere.</para>
 /// </remarks>
 internal sealed class GitSkillSource : ISkillSource
 {
-    /// <summary>Seconds allowed for a single git command before it is killed.</summary>
+    /// <summary>Seconds allowed for a clone or fetch before it is killed.</summary>
     internal const int GitTimeoutSeconds = 60;
+
+    /// <summary>Seconds allowed for a local probe such as <c>rev-parse</c>, which never touches the network.</summary>
+    internal const int ProbeTimeoutSeconds = 10;
+
+    /// <summary>
+    /// Seconds a second instance waits for the lock: the holder's clone can take up to
+    /// <see cref="GitTimeoutSeconds"/> plus its probes, so wait a little longer than that.
+    /// </summary>
+    internal const int LockWaitSeconds = GitTimeoutSeconds + 15;
+
+    private static readonly TimeSpan LockPollInterval = TimeSpan.FromMilliseconds(250);
 
     private readonly string _url;
     private readonly string? _gitRef;
@@ -44,6 +62,9 @@ internal sealed class GitSkillSource : ISkillSource
 
     /// <summary>The local checkout this source scans.</summary>
     internal string CacheDir => _cacheDir;
+
+    /// <summary>The lock file guarding <see cref="CacheDir"/> across processes (a sibling, since a clone target must be empty).</summary>
+    internal string LockPath => _cacheDir + ".lock";
 
     public async Task<SkillSourceLoad> LoadAsync(CancellationToken cancellationToken)
     {
@@ -80,15 +101,25 @@ internal sealed class GitSkillSource : ISkillSource
 
     private bool HasCheckout() => Directory.Exists(Path.Combine(_cacheDir, ".git"));
 
-    /// <summary>Clones on first use, otherwise fetches and hard-resets to the remote state.</summary>
+    /// <summary>
+    /// Under the cache lock: clones on first use, otherwise fetches and hard-resets to the remote
+    /// state. The clone-or-fetch decision is made after the lock is held, so an instance that
+    /// waited for a sibling's clone sees the finished checkout and fetches (a cheap no-op).
+    /// </summary>
     private async Task<bool> SyncAsync(CancellationToken cancellationToken)
     {
+        using var cacheLock = await AcquireLockAsync(cancellationToken);
+        if (cacheLock is null)
+        {
+            return false;
+        }
+
         var refLabel = string.IsNullOrEmpty(_gitRef) ? "default branch" : _gitRef;
         var stopwatch = Stopwatch.StartNew();
 
         if (!HasCheckout())
         {
-            Directory.CreateDirectory(_cacheDir);
+            PrepareEmptyCacheDir();
             _logger.LogInformation(
                 "skill source {Source}: clone started; url={Url}; ref={Ref}; cache={Cache}; timeout={Timeout}s",
                 Id, RedactUrl(_url), refLabel, _cacheDir, GitTimeoutSeconds);
@@ -144,16 +175,75 @@ internal sealed class GitSkillSource : ISkillSource
         return true;
     }
 
+    /// <summary>
+    /// A clone target must not exist or must be empty. A folder without a <c>.git</c> is
+    /// leftover from an interrupted clone (or a sibling's failed attempt before locking existed)
+    /// and is ours to discard.
+    /// </summary>
+    private void PrepareEmptyCacheDir()
+    {
+        if (Directory.Exists(_cacheDir) && Directory.EnumerateFileSystemEntries(_cacheDir).Any())
+        {
+            _logger.LogWarning(
+                "skill source {Source}: cache folder {Cache} has content but no checkout; clearing it before cloning",
+                Id, _cacheDir);
+            Directory.Delete(_cacheDir, recursive: true);
+        }
+
+        Directory.CreateDirectory(_cacheDir);
+    }
+
+    /// <summary>
+    /// Takes the cross-process lock for the cache folder, waiting up to <see cref="LockWaitSeconds"/>
+    /// for a sibling instance to finish its sync. Returns <c>null</c> when the lock could not be
+    /// taken in time; the caller then falls back to whatever checkout exists.
+    /// </summary>
+    private async Task<FileStream?> AcquireLockAsync(CancellationToken cancellationToken)
+    {
+        Directory.CreateDirectory(Path.GetDirectoryName(LockPath)!);
+        var waited = Stopwatch.StartNew();
+        var announced = false;
+        while (true)
+        {
+            try
+            {
+                // FileShare.None is a real exclusive lock on Windows (sharing violation) and on
+                // Unix (.NET maps it to flock). DeleteOnClose keeps the folder tidy; a waiter
+                // re-opens by path each attempt, so a vanished file is simply recreated.
+                return new FileStream(LockPath, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None, bufferSize: 1, FileOptions.DeleteOnClose);
+            }
+            catch (IOException) when (waited.Elapsed < TimeSpan.FromSeconds(LockWaitSeconds))
+            {
+                if (!announced)
+                {
+                    announced = true;
+                    _logger.LogInformation(
+                        "skill source {Source}: another orchestrator instance is syncing {Cache}; waiting for it (up to {Seconds}s)",
+                        Id, _cacheDir, LockWaitSeconds);
+                }
+
+                await Task.Delay(LockPollInterval, cancellationToken);
+            }
+            catch (IOException)
+            {
+                _logger.LogWarning(
+                    "skill source {Source}: could not take the cache lock {Lock} within {Seconds}s; another instance still holds it",
+                    Id, LockPath, LockWaitSeconds);
+                return null;
+            }
+        }
+    }
+
     /// <summary>The checked-out commit of the cache, or null when git cannot tell (no checkout, git missing).</summary>
     private async Task<string?> RevParseHeadAsync(CancellationToken cancellationToken)
     {
-        var (ok, stdout) = await RunGitCapturingAsync(["-C", _cacheDir, "rev-parse", "HEAD"], cancellationToken, quiet: true);
+        var (ok, stdout) = await RunGitCapturingAsync(["-C", _cacheDir, "rev-parse", "HEAD"], cancellationToken, quiet: true, ProbeTimeoutSeconds);
         var sha = stdout.Trim();
         return ok && sha.Length > 0 ? sha : null;
     }
 
     private async Task<bool> RunGitAsync(List<string> args, CancellationToken cancellationToken)
-        => (await RunGitCapturingAsync(args, cancellationToken, quiet: false)).Ok;
+        => (await RunGitCapturingAsync(args, cancellationToken, quiet: false, GitTimeoutSeconds)).Ok;
 
     /// <summary>
     /// Runs one git command. The token travels as an <c>http.extraHeader</c> config argument —
@@ -161,7 +251,8 @@ internal sealed class GitSkillSource : ISkillSource
     /// list has the URL's userinfo redacted. <paramref name="quiet"/> suppresses failure logging
     /// for probes whose failure is an expected answer (rev-parse on an empty cache).
     /// </summary>
-    private async Task<(bool Ok, string Stdout)> RunGitCapturingAsync(List<string> args, CancellationToken cancellationToken, bool quiet)
+    private async Task<(bool Ok, string Stdout)> RunGitCapturingAsync(
+        List<string> args, CancellationToken cancellationToken, bool quiet, int timeoutSeconds)
     {
         var start = new ProcessStartInfo
         {
@@ -170,6 +261,7 @@ internal sealed class GitSkillSource : ISkillSource
             RedirectStandardError = true,
             UseShellExecute = false,
         };
+        ConfigureNonInteractive(start);
 
         if (!string.IsNullOrEmpty(_token))
         {
@@ -204,7 +296,7 @@ internal sealed class GitSkillSource : ISkillSource
         }
 
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        timeout.CancelAfter(TimeSpan.FromSeconds(GitTimeoutSeconds));
+        timeout.CancelAfter(TimeSpan.FromSeconds(timeoutSeconds));
         var stderrTask = process.StandardError.ReadToEndAsync(timeout.Token);
         var stdoutTask = process.StandardOutput.ReadToEndAsync(timeout.Token);
         try
@@ -213,12 +305,12 @@ internal sealed class GitSkillSource : ISkillSource
         }
         catch (OperationCanceledException)
         {
-            try { process.Kill(entireProcessTree: true); } catch (InvalidOperationException) { }
+            try { process.Kill(entireProcessTree: true); } catch (Exception) { /* already gone, or not ours to kill */ }
             if (!quiet)
             {
                 _logger.LogWarning(
                     "skill source {Source}: git {Args} timed out after {Timeout}s",
-                    Id, DescribeArgs(args), GitTimeoutSeconds);
+                    Id, DescribeArgs(args), timeoutSeconds);
             }
             return (false, "");
         }
@@ -231,12 +323,44 @@ internal sealed class GitSkillSource : ISkillSource
                 _logger.LogWarning(
                     "skill source {Source}: git {Args} exited {Code}: {Stderr}",
                     Id, DescribeArgs(args), process.ExitCode, Truncate(stderr));
+                if (LooksLikeAuthFailure(stderr))
+                {
+                    _logger.LogWarning(
+                        "skill source {Source}: git could not authenticate to {Url}. The orchestrator runs git without " +
+                        "credential prompts, so a private repo needs either a stored credential (git credential helper) " +
+                        "or the source's \"token\" setting, e.g. \"token\": \"${{SKILLS_GIT_TOKEN}}\"",
+                        Id, RedactUrl(_url));
+                }
             }
             return (false, "");
         }
 
         return (true, await stdoutTask);
     }
+
+    /// <summary>
+    /// Disables every interactive credential path: git's own terminal prompt, Git Credential
+    /// Manager's UI, and askpass helpers. A credential that is already stored is still used.
+    /// </summary>
+    internal static void ConfigureNonInteractive(ProcessStartInfo start)
+    {
+        start.Environment["GIT_TERMINAL_PROMPT"] = "0";
+        start.Environment["GCM_INTERACTIVE"] = "never";
+        start.Environment["GIT_ASKPASS"] = "";
+        start.Environment["SSH_ASKPASS"] = "";
+    }
+
+    /// <summary>Recognizes git's ways of saying the remote refused or required credentials.</summary>
+    internal static bool LooksLikeAuthFailure(string stderr) =>
+        stderr.Contains("Authentication failed", StringComparison.OrdinalIgnoreCase)
+        || stderr.Contains("could not read Username", StringComparison.OrdinalIgnoreCase)
+        || stderr.Contains("could not read Password", StringComparison.OrdinalIgnoreCase)
+        || stderr.Contains("terminal prompts disabled", StringComparison.OrdinalIgnoreCase)
+        || stderr.Contains("Permission denied", StringComparison.OrdinalIgnoreCase)
+        || stderr.Contains("Repository not found", StringComparison.OrdinalIgnoreCase)
+        || stderr.Contains("HTTP 401", StringComparison.OrdinalIgnoreCase)
+        || stderr.Contains("HTTP 403", StringComparison.OrdinalIgnoreCase)
+        || stderr.Contains("Invalid username or token", StringComparison.OrdinalIgnoreCase);
 
     /// <summary>The argument list for a log line, with the clone URL redacted.</summary>
     private string DescribeArgs(List<string> args)
