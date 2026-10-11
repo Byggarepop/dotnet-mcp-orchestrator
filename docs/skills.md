@@ -73,6 +73,30 @@ empty `list_skills` result means the server loaded a different config than you i
 }
 ```
 
+Every string field accepts `${VAR}` / `${VAR:-default}` placeholders, resolved from the
+orchestrator's environment (see [Per-project values](../McpOrchestrator/README.md#per-project-values-in-a-shared-catalog)).
+
+| Field | Applies to | Meaning |
+| --- | --- | --- |
+| `enabled` | section | Master switch. `false` registers nothing. Default `true`. |
+| `sources[]` | section | Where skills come from, in priority order: on a name collision the earlier source wins. |
+| `id` | every source | Label for the source in log lines, audit lines and the git cache folder name. Must be unique in the config. Never shown to agents. |
+| `type` | every source | `directory`, `git` or `http`. |
+| `path` | `directory` | Folder scanned recursively for `SKILL.md` files. |
+| `url` | `git` | Clone URL (https). |
+| `ref` | `git` | Branch, tag or commit to check out. Default: the remote default branch. |
+| `token` | `git` | Bearer token for private repos, sent as an `Authorization` header. Never logged. |
+| `indexUrl` | `http` | URL of an [Agent Skills discovery index](https://agentskills.io) listing the skills and their files. |
+| `authorization` | `http` | Verbatim `Authorization` header value for the index and file requests. Never logged. |
+| `pollSeconds` | `git`, `http` | Refresh interval. Default 300, minimum 10. Ignored for `directory`, which uses a file watcher. |
+| `delivery.catalogTools` | delivery | Expose `list_skills` / `get_skill` / `get_skill_file`. Default `true`. |
+| `delivery.perSkillTools` | delivery | Also expose one `skill_<name>` tool per skill. Default `false`: every tool costs context on every turn. |
+| `delivery.resources` | delivery | Expose `skill://` resources and `skill://index.json` (SEP-2640). Default `true`. |
+| `governance.allowedSkills` | governance | Skill names that may be served. Empty means all. |
+| `governance.deniedSkills` | governance | Skill names never served. Deny wins over allow. Case-insensitive. |
+| `governance.integrity.mode` | governance | On a hash mismatch: `warn` (serve and log, default) or `block` (treat as denied). |
+| `governance.integrity.sha256` | governance | Skill name to expected SHA-256 of the skill folder content. |
+
 ## Sources
 
 `directory` scans recursively for `SKILL.md` files (a `FileSystemWatcher` picks up edits live).
@@ -181,6 +205,31 @@ skill name to the SHA-256 of its folder content — on mismatch `warn` (serve + 
 hashed as `path 0x00 content 0x00` into one SHA-256 (see `SkillHasher` for a shell one-liner).
 Every served skill body or file is audit-logged (skill, file, hash, source, delivery mode) to
 stderr and the [log file](../McpOrchestrator/README.md#logs).
+
+**Example.** A team repo holds many skills, but this orchestrator should serve only the three
+that its projects use, never the experimental `deploy-prod` skill even if someone adds it to the
+allow-list, and the `release-checklist` skill must match a reviewed version:
+
+```jsonc
+"governance": {
+  "allowedSkills": ["code-review", "release-checklist", "pdf-processing"],
+  "deniedSkills":  ["deploy-prod"],
+  "integrity": {
+    "mode": "block",
+    "sha256": { "release-checklist": "9f2c3a…" }
+  }
+}
+```
+
+The result: `list_skills` shows at most those three names. Any other skill in any source is
+discovered, logged as dropped, and never served. If the `release-checklist` folder changes
+upstream, its hash no longer matches and `block` drops it until the pin is updated to the new
+reviewed hash, so an unreviewed edit cannot reach agents. With `"mode": "warn"` it would be
+served anyway, with a warning in the log.
+
+Governance is global, not per source: the lists apply to the merged catalog after collisions are
+resolved. To let a project add its own skills under a central allow-list, either leave
+`allowedSkills` empty and rely on `deniedSkills`, or include the project skill names in the list.
 
 ## How it works
 
