@@ -172,7 +172,79 @@ public sealed class GitSkillSourceTests : IDisposable
         Assert.Equal("0", start.Environment["GIT_TERMINAL_PROMPT"]);
         Assert.Equal("never", start.Environment["GCM_INTERACTIVE"]);
         Assert.Equal("", start.Environment["GIT_ASKPASS"]);
+        Assert.Equal(["-c", "credential.interactive=never"], start.ArgumentList);
     }
+
+    [Fact]
+    public void Git_gets_its_own_stdin_instead_of_inheriting_the_mcp_transport_pipe()
+    {
+        // Git for Windows hangs at startup when it inherits a stdin pipe another process is
+        // reading, which is what a stdio MCP server's stdin is; every clone then hit the timeout.
+        var start = GitSkillSource.CreateStartInfo(null, ["clone", "x"]);
+
+        Assert.True(start.RedirectStandardInput);
+        Assert.True(start.RedirectStandardOutput);
+        Assert.True(start.RedirectStandardError);
+        Assert.Equal("git", start.FileName);
+        Assert.Equal(["-c", "credential.interactive=never", "clone", "x"], start.ArgumentList);
+    }
+
+    [Fact]
+    public void A_token_is_sent_as_basic_auth_and_turns_credential_helpers_off()
+    {
+        var start = new ProcessStartInfo("git");
+
+        GitSkillSource.AddAuthArguments(start, "ghp_secret");
+
+        // GitHub's git endpoints answer 401 to "Bearer <token>" even when the token is valid; basic
+        // auth with the token as password is what every forge documents.
+        Assert.Equal(
+            ["-c", "credential.helper=", "-c", "http.extraHeader=Authorization: Basic " + Base64("x-access-token:ghp_secret")],
+            start.ArgumentList);
+    }
+
+    [Fact]
+    public void Without_a_token_stored_credentials_stay_in_play()
+    {
+        var start = new ProcessStartInfo("git");
+
+        GitSkillSource.AddAuthArguments(start, null);
+        GitSkillSource.AddAuthArguments(start, "");
+
+        Assert.Empty(start.ArgumentList);
+    }
+
+    [Fact]
+    public async Task Clone_with_a_token_works_and_logs_the_auth_mode_without_the_token()
+    {
+        if (!GitAvailable()) return;
+        SeedOrigin("one");
+        var log = new CollectingLogger();
+        var source = new GitSkillSource("team", OriginUrl, "main", "ghp_secret", CacheRoot, log);
+
+        var load = await source.LoadAsync(CancellationToken.None);
+        await source.LoadAsync(CancellationToken.None);
+
+        Assert.Equal(SkillSourceFreshness.Fresh, load.Freshness);
+        Assert.Contains(log.Entries, e => e.Message.Contains("clone started") && e.Message.Contains("auth=token"));
+        Assert.Contains(log.Entries, e => e.Message.Contains("fetch started") && e.Message.Contains("auth=token"));
+        Assert.DoesNotContain(log.Entries, e => e.Message.Contains("ghp_secret") || e.Message.Contains(Base64("x-access-token:ghp_secret")));
+    }
+
+    [Fact]
+    public async Task Clone_without_a_token_logs_that_git_credentials_apply()
+    {
+        if (!GitAvailable()) return;
+        SeedOrigin("one");
+        var log = new CollectingLogger();
+        var source = new GitSkillSource("team", OriginUrl, "main", null, CacheRoot, log);
+
+        await source.LoadAsync(CancellationToken.None);
+
+        Assert.Contains(log.Entries, e => e.Message.Contains("clone started") && e.Message.Contains("auth=none (git credential helper)"));
+    }
+
+    private static string Base64(string text) => Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(text));
 
     [Fact]
     public void Authentication_failures_are_recognized_in_git_stderr()
@@ -180,6 +252,8 @@ public sealed class GitSkillSourceTests : IDisposable
         Assert.True(GitSkillSource.LooksLikeAuthFailure("fatal: could not read Username for 'https://github.com': terminal prompts disabled"));
         Assert.True(GitSkillSource.LooksLikeAuthFailure("remote: Repository not found.\nfatal: repository 'https://github.com/org/private.git/' not found"));
         Assert.True(GitSkillSource.LooksLikeAuthFailure("fatal: Authentication failed for 'https://github.com/org/private.git/'"));
+        // What git says when a token in http.extraHeader is rejected and its (closed) stdin cannot supply a password.
+        Assert.True(GitSkillSource.LooksLikeAuthFailure("Cloning into 'x'..." + Environment.NewLine + "fatal: unable to get password from user"));
         Assert.False(GitSkillSource.LooksLikeAuthFailure("fatal: destination path 'x' already exists and is not an empty directory."));
         Assert.False(GitSkillSource.LooksLikeAuthFailure("fatal: unable to access 'https://github.com/': Could not resolve host: github.com"));
     }

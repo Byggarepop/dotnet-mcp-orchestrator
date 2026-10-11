@@ -86,7 +86,7 @@ orchestrator's environment (see [Per-project values](../McpOrchestrator/README.m
 | `path` | `directory` | Folder scanned recursively for `SKILL.md` files. |
 | `url` | `git` | Clone URL (https). |
 | `ref` | `git` | Branch, tag or commit to check out. Default: the remote default branch. |
-| `token` | `git` | Bearer token for private repos, sent as an `Authorization` header. Never logged. |
+| `token` | `git` | Access token for private repos, sent as HTTP basic auth (`x-access-token:<token>`). Never logged. |
 | `indexUrl` | `http` | URL of an [Agent Skills discovery index](https://agentskills.io) listing the skills and their files. |
 | `authorization` | `http` | Verbatim `Authorization` header value for the index and file requests. Never logged. |
 | `pollSeconds` | `git`, `http` | Refresh interval. Default 300, minimum 10. Ignored for `directory`, which uses a file watcher. |
@@ -166,8 +166,14 @@ Only if `git clone <url>` wouldn't already work on that machine:
    skills repo, permission **Contents: Read-only**), set it as an environment variable (e.g. in
    the orchestrator's `env` block: `"SKILLS_GIT_TOKEN": "github_pat_…"`), and reference it as
    `"token": "${SKILLS_GIT_TOKEN}"`. The config file stays free of secrets — each machine
-   resolves its own variable. The token is sent as an `Authorization` header, never put on the
-   URL or logged; if it expires, the last fetched copy keeps serving with a warning in the log.
+   resolves its own variable. The token is sent as HTTP basic auth (user `x-access-token`,
+   password = token, the form GitHub, GitLab and Azure DevOps accept), never put on the URL or
+   logged. With a token set, git's credential helpers are switched off for the sync, so a wrong or
+   expired token fails in a second with `Authentication failed` instead of handing the request to a
+   helper; if it expires, the last fetched copy keeps serving with a warning in the log. A classic
+   GitHub token needs the `repo` scope; a fine-grained one needs *Contents: Read-only* on the repo.
+   The `clone started` / `fetch started` log lines show `auth=token` or
+   `auth=none (git credential helper)`, so you can see which path a sync took.
 
 ## Delivery modes
 
