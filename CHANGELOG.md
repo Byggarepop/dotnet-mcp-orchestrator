@@ -7,7 +7,7 @@ All notable changes to this project are documented here. The format is based on
 The release workflow reads the section matching the tag (e.g. `## [0.1.0]` for tag `v0.1.0`) and
 uses it as the GitHub Release notes — so keep an entry per released version.
 
-## [Unreleased]
+## [0.7.0] - 2026-10-11
 
 ### Changed
 - The initialize handshake now reserves the essential guidance first — routing header, a short
