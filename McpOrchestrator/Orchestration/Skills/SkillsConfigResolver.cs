@@ -5,8 +5,9 @@ namespace McpOrchestrator.Orchestration.Skills;
 /// <summary>
 /// Applies <c>${VAR}</c> substitution and validation to the <c>skills</c> config section,
 /// with the same semantics as capability resolution (built-in placeholders first, then env
-/// vars). Invalid sources are dropped with a log line — the skills section is never a reason
-/// to reject an otherwise valid config, matching "invalid skills are logged and skipped".
+/// vars). Invalid sources, and sources whose placeholders have no value on this machine, are
+/// dropped with a log line — the skills section is never a reason to reject an otherwise valid
+/// config, matching "invalid skills are logged and skipped".
 /// </summary>
 internal static class SkillsConfigResolver
 {
@@ -51,11 +52,25 @@ internal static class SkillsConfigResolver
                 continue;
             }
 
-            source.Path = SubstituteOrNull(source.Path, placeholders, logger);
-            source.Url = SubstituteOrNull(source.Url, placeholders, logger);
-            source.Token = SubstituteOrNull(source.Token, placeholders, logger);
-            source.IndexUrl = SubstituteOrNull(source.IndexUrl, placeholders, logger);
-            source.Authorization = SubstituteOrNull(source.Authorization, placeholders, logger);
+            // A placeholder with no value on this machine (and no default) disables the source,
+            // the same way an unresolved placeholder disables a capability. This is what lets a
+            // central catalog list a project-local directory source such as
+            // "path": "${PROJECT_SKILLS_DIR}": projects that set the variable get the skills, the
+            // rest get a log line naming the variable instead of a scan of a literal "${...}" path.
+            var unresolved = new List<string>();
+            source.Path = SubstituteOrNull(source.Path, placeholders, logger, unresolved);
+            source.Url = SubstituteOrNull(source.Url, placeholders, logger, unresolved);
+            source.Token = SubstituteOrNull(source.Token, placeholders, logger, unresolved);
+            source.IndexUrl = SubstituteOrNull(source.IndexUrl, placeholders, logger, unresolved);
+            source.Authorization = SubstituteOrNull(source.Authorization, placeholders, logger, unresolved);
+            if (unresolved.Count > 0)
+            {
+                logger.LogWarning(
+                    "skills config: source '{Id}' disabled on this machine: no value for ${{{Variables}}} "
+                    + "(set it in the orchestrator's env block, or give the placeholder a default); source skipped",
+                    source.Id, string.Join("}, ${", unresolved));
+                continue;
+            }
 
             var problem = source.Type.ToLowerInvariant() switch
             {
@@ -82,8 +97,8 @@ internal static class SkillsConfigResolver
     }
 
     private static string? SubstituteOrNull(
-        string? value, IReadOnlyDictionary<string, string> placeholders, ILogger logger)
-        => value is null ? null : CapabilityCatalog.Substitute(value, placeholders, logger);
+        string? value, IReadOnlyDictionary<string, string> placeholders, ILogger logger, ICollection<string> unresolved)
+        => value is null ? null : CapabilityCatalog.Substitute(value, placeholders, logger, unresolved);
 
     private static bool UsesLocalPlaceholder(string? value)
         => value is not null
