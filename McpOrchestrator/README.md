@@ -737,10 +737,16 @@ client renders without being asked:
 - **The `list_capabilities` tool description** gets a generated suffix — *"Currently registered:
   jira (Issue tracking…); …"* — so even a bare tool listing carries the capability names.
 
-**The whole block is budgeted at 1,900 characters.** Clients cap what they render: Claude Code
-(observed on 2.1.x, July 2026 — inferred behavior, not documented protocol; re-measured
-occasionally) keeps roughly 2,048 characters of server instructions and silently truncates the
-rest mid-sentence. The orchestrator therefore stays under that itself, spending the budget in
+**The whole block is budgeted at 3,800 characters.** Hosts cap what they render, and the cap is
+inferred behavior rather than documented protocol, so it is re-measured with a probe MCP server
+that returns numbered 50-character lines and a headless prompt asking which marker the model
+last saw. Measured 2026-10-11: Claude Code 2.1.296 keeps 4,096 characters and appends its own
+"… [truncated]" note (it kept about 2,048 on 2.1.x in July 2026); GitHub Copilot CLI 1.0.70
+passes 6,000 characters whole, but only once the server is allowlisted for instructions (or with
+`--allow-all-mcp-server-instructions`), otherwise it sends none; VS Code's Copilot agent renders
+the text verbatim with no fixed cap (read from source); Visual Studio 2026 loads and shows the
+instructions but documents no limit. 3,800 keeps a margin under the tightest measured host. The
+orchestrator therefore stays under that itself, spending the budget in
 priority order: the essential guidance first — the routing header, a one-line skills-discovery
 hint when [skills](../docs/skills.md) are served through the catalog tools, and every
 name/summary line (the minimum viable scent, never dropped) — then promoted instructions in

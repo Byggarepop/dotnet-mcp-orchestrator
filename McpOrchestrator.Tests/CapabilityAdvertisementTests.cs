@@ -123,17 +123,17 @@ public sealed class CapabilityAdvertisementTests
         // First promoted entry fits; the second crosses the total budget and gets the note.
         var text = CapabilityAdvertisement.BuildServerInstructions(new[]
         {
-            Cap("first", "A.", instructions: "FIRST-MARKER " + new string('a', 800), promote: true),
-            Cap("second", "B.", instructions: "SECOND-MARKER " + new string('b', 1_500), promote: true),
+            Cap("first", "A.", instructions: "FIRST-MARKER " + new string('a', 1_900), promote: true),
+            Cap("second", "B.", instructions: "SECOND-MARKER " + new string('b', 1_900), promote: true),
         }, out var overBudget);
 
         Assert.Equal(new[] { "second" }, overBudget);
         Assert.NotNull(text);
         Assert.True(text!.Length <= CapabilityAdvertisement.MaxTotalInstructionsChars);
         Assert.Contains("FIRST-MARKER", text);
-        Assert.Contains(new string('a', 800), text); // first entry intact
-        Assert.Contains("SECOND-MARKER", text);      // second starts…
-        Assert.DoesNotContain(new string('b', 1_500), text); // …but is cut
+        Assert.Contains(new string('a', 1_900), text); // first entry intact
+        Assert.Contains("SECOND-MARKER", text);        // second starts…
+        Assert.DoesNotContain(new string('b', 1_900), text); // …but is cut
         Assert.Contains("truncated — call 'list_capabilities'", text);
     }
 
@@ -143,10 +143,11 @@ public sealed class CapabilityAdvertisementTests
         var text = CapabilityAdvertisement.BuildServerInstructions(new[]
         {
             Cap("big", "A.", instructions: new string('a', CapabilityAdvertisement.MaxPromotedInstructionsChars), promote: true),
+            Cap("big2", "A2.", instructions: new string('c', CapabilityAdvertisement.MaxPromotedInstructionsChars), promote: true),
             Cap("late", "B.", instructions: "LATE-MARKER never advertised.", promote: true),
         }, out var overBudget);
 
-        Assert.Equal(new[] { "big", "late" }, overBudget);
+        Assert.Equal(new[] { "big2", "late" }, overBudget);
         Assert.True(text!.Length <= CapabilityAdvertisement.MaxTotalInstructionsChars);
         Assert.DoesNotContain("LATE-MARKER", text);
         Assert.Contains("- late: B.", text); // the summary line always survives
@@ -162,6 +163,7 @@ public sealed class CapabilityAdvertisementTests
             new[]
             {
                 Cap("big", "A.", instructions: new string('a', CapabilityAdvertisement.MaxPromotedInstructionsChars), promote: true),
+                Cap("big2", "A2.", instructions: new string('c', CapabilityAdvertisement.MaxPromotedInstructionsChars), promote: true),
                 Cap("late", "B.", instructions: "Never fits.", promote: true),
             },
             NullLogger.Instance));
@@ -172,7 +174,7 @@ public sealed class CapabilityAdvertisementTests
         service.Apply(options, registry.Capabilities);
 
         var warning = Assert.Single(log.Entries, e => e.Level == LogLevel.Warning);
-        Assert.Contains("big, late", warning.Message);
+        Assert.Contains("big2, late", warning.Message);
         Assert.Contains(CapabilityAdvertisement.MaxTotalInstructionsChars.ToString(), warning.Message);
     }
 
@@ -293,6 +295,7 @@ public sealed class CapabilityAdvertisementTests
         var capabilities = new[]
         {
             Cap("big", "A.", instructions: new string('a', CapabilityAdvertisement.MaxPromotedInstructionsChars), promote: true),
+            Cap("big2", "A2.", instructions: new string('c', CapabilityAdvertisement.MaxPromotedInstructionsChars), promote: true),
             Cap("late", "B.", instructions: "LATE-MARKER", promote: true),
         };
 
@@ -300,7 +303,7 @@ public sealed class CapabilityAdvertisementTests
 
         Assert.Contains(hint, built.Text);
         Assert.Contains("- late: B.", built.Text);
-        Assert.Equal(new[] { "big", "late" }, built.OverBudgetPromoted);
+        Assert.Equal(new[] { "big2", "late" }, built.OverBudgetPromoted);
         Assert.True(built.Text!.Length <= CapabilityAdvertisement.MaxTotalInstructionsChars);
     }
 
@@ -308,13 +311,14 @@ public sealed class CapabilityAdvertisementTests
     public void Base_exactly_at_the_budget_is_kept_whole_and_one_more_char_shortens_summaries()
     {
         var hint = CapabilityAdvertisement.SkillsHint(26);
-        var capabilities = NineCapabilities(promoteOne: false);
+        const int count = 20;
+        CapabilityDescriptor[] Padded(int extra) => Enumerable.Range(1, count)
+            .Select(i => Cap($"capability-{i}", $"Capability number {i}. " + Summary(100 + extra / count + (i == count ? extra % count : 0))))
+            .ToArray();
+        var capabilities = Padded(0);
         var probe = CapabilityAdvertisement.BuildServerInstructions(capabilities, hint);
         var slack = CapabilityAdvertisement.MaxTotalInstructionsChars - probe.Text!.Length;
-        Assert.InRange(slack, 1, 9 * (CapabilityAdvertisement.MaxSummaryChars - 100 - 30)); // spread below, each summary stays under its cap
-        CapabilityDescriptor[] Padded(int extra) => Enumerable.Range(1, 9)
-            .Select(i => Cap($"capability-{i}", $"Capability number {i}. " + Summary(100 + extra / 9 + (i == 9 ? extra % 9 : 0))))
-            .ToArray();
+        Assert.InRange(slack, 1, count * (CapabilityAdvertisement.MaxSummaryChars - 100 - 30)); // spread below, each summary stays under its cap
         capabilities = Padded(slack);
 
         var exact = CapabilityAdvertisement.BuildServerInstructions(capabilities, hint);
@@ -322,7 +326,7 @@ public sealed class CapabilityAdvertisementTests
         Assert.Equal(CapabilityAdvertisement.MaxTotalInstructionsChars, exact.Text!.Length);
         Assert.False(exact.SummariesShortened);
         Assert.Contains(hint, exact.Text);
-        Assert.EndsWith(Summary(100 + slack / 9 + slack % 9), exact.Text);
+        Assert.EndsWith(Summary(100 + slack / count + slack % count), exact.Text);
 
         capabilities = Padded(slack + 1);
         var over = CapabilityAdvertisement.BuildServerInstructions(capabilities, hint);
@@ -330,7 +334,7 @@ public sealed class CapabilityAdvertisementTests
         Assert.True(over.SummariesShortened);
         Assert.True(over.Text!.Length <= CapabilityAdvertisement.MaxTotalInstructionsChars, $"length {over.Text.Length}");
         Assert.Contains(hint, over.Text);
-        Assert.Contains("- capability-9: ", over.Text);
+        Assert.Contains($"- capability-{count}: ", over.Text);
     }
 
     [Fact]
@@ -357,7 +361,7 @@ public sealed class CapabilityAdvertisementTests
     public void Base_too_large_even_with_minimal_summaries_exceeds_the_budget_visibly_instead_of_dropping_lines()
     {
         var hint = CapabilityAdvertisement.SkillsHint(26);
-        var capabilities = Enumerable.Range(1, 40)
+        var capabilities = Enumerable.Range(1, 80)
             .Select(i => Cap($"capability-number-{i}", $"Capability {i}. " + Summary(CapabilityAdvertisement.MaxSummaryChars)))
             .ToArray();
 
@@ -367,7 +371,7 @@ public sealed class CapabilityAdvertisementTests
         Assert.True(built.SummariesShortened);
         Assert.Empty(built.OverBudgetPromoted);
         Assert.Contains(hint, built.Text);
-        Assert.Equal(40, capabilities.Count(c => built.Text!.Contains($"- {c.Name}: ", StringComparison.Ordinal)));
+        Assert.Equal(80, capabilities.Count(c => built.Text!.Contains($"- {c.Name}: ", StringComparison.Ordinal)));
     }
 
     [Fact]
@@ -450,7 +454,7 @@ public sealed class CapabilityAdvertisementTests
         Assert.Contains("CALL THIS WHEN", text);
         Assert.Contains("check_holes", text);
         // The example must fit the total budget whole — it is the catalog people copy, and the
-        // budget exists because Claude Code truncates the rendered block at ~2,048 chars.
+        // budget exists because hosts truncate the rendered block (Claude Code at 4,096 chars).
         Assert.Empty(overBudget);
         Assert.True(text!.Length <= CapabilityAdvertisement.MaxTotalInstructionsChars);
 

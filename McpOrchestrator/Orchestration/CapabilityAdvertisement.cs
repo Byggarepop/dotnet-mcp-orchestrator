@@ -18,16 +18,20 @@ namespace McpOrchestrator.Orchestration;
 internal static class CapabilityAdvertisement
 {
     /// <summary>
-    /// Budget for the whole server-instructions block. Claude Code (observed on 2.1.x,
-    /// 2026-07-13) renders roughly 2,048 chars of server instructions and silently truncates the
-    /// tail with its own note — an inferred client behavior, not documented protocol, so
-    /// re-measure occasionally and adjust. 1,900 leaves a safety margin under that cap. Spent in
-    /// priority order: the essential guidance first — the routing header, the skills-discovery
-    /// hint (when skills are served) and one name/summary line per capability — then promoted
-    /// instructions in catalog order; the first entry that does not fit is truncated with a note
-    /// and the rest are omitted — a visible cut beats a silent client-side one.
+    /// Budget for the whole server-instructions block. Hosts cap what they render, and the cap
+    /// is inferred client behavior rather than documented protocol, so it is re-measured with a
+    /// probe MCP server that returns numbered 50-char lines and a headless prompt asking which
+    /// marker was last seen. Measured 2026-10-11: Claude Code 2.1.296 keeps 4,096 chars and
+    /// appends "… [truncated]" (it kept ~2,048 on 2.1.x in July 2026); GitHub Copilot CLI
+    /// 1.0.70 passes 6,000 chars whole once the server is allowlisted for instructions; VS Code's
+    /// Copilot agent renders the text verbatim with no fixed cap (read from source). 3,800 keeps
+    /// a margin under the tightest measured host. Spent in priority order: the essential
+    /// guidance first — the routing header, the skills-discovery hint (when skills are served)
+    /// and one name/summary line per capability — then promoted instructions in catalog order;
+    /// the first entry that does not fit is truncated with a note and the rest are omitted — a
+    /// visible cut beats a silent client-side one.
     /// </summary>
-    internal const int MaxTotalInstructionsChars = 1_900;
+    internal const int MaxTotalInstructionsChars = 3_800;
 
     /// <summary>
     /// Per-capability cap on promoted instructions hoisted into the handshake. Generous enough
