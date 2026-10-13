@@ -825,7 +825,10 @@ binary takes `--on-config-change` directly.)
 - **Interpreter by extension:** `.ps1` → `pwsh` (Windows falls back to `powershell`), `.py` →
   `python` (`python3` on macOS/Linux), `.sh` → `bash`, `.cmd`/`.bat` → `cmd /c`; any other file
   runs directly. The working directory is the script's folder.
-- **What the script gets.** Environment variables, with capability names `;`-separated:
+- **What the script gets.** The diff is injected into the *script's own process environment*
+  for that one run — nothing is written to the machine's user or system variables, and the values
+  are gone when the script exits. Capability names are `;`-separated; an empty value means nothing
+  changed in that category:
 
   | Variable | Value |
   | --- | --- |
@@ -841,12 +844,31 @@ binary takes `--on-config-change` directly.)
   (never to the MCP stdout), followed by one line with the exit code and duration. A failing or
   missing script never undoes the reload.
 
+A practical hook: read the variables, act only on what matters to this project. Here, when the
+central catalog gains `tokensaver` the project installs the tool it launches, and when it gains
+`database` the project runs its own setup script.
+
 ```powershell
-# scripts/on-mcp-change.ps1
-$added = $env:MCP_ORCHESTRATOR_CHANGE_ADDED -split ';' | Where-Object { $_ }
-if ($added -contains 'tokensaver') {
-    dotnet tool install -g TokenSaver.Mcp
-}
+# scripts/on-mcp-change.ps1 — runs with its own folder as the working directory
+$added   = $env:MCP_ORCHESTRATOR_CHANGE_ADDED   -split ';' | Where-Object { $_ }
+$removed = $env:MCP_ORCHESTRATOR_CHANGE_REMOVED -split ';' | Where-Object { $_ }
+
+Write-Output "config changed: $env:MCP_ORCHESTRATOR_CHANGE_SOURCE"   # lands in orchestrator.log as [hook] …
+
+if ($added -contains 'tokensaver') { dotnet tool install -g TokenSaver.Mcp }
+if ($added -contains 'database')   { & "$PSScriptRoot\setup-dev-db.ps1" }
+if ($removed.Count -gt 0)          { Write-Output "removed: $($removed -join ', ')" }
+```
+
+The same in Python, reading the JSON from stdin instead of the variables:
+
+```python
+# scripts/on-mcp-change.py
+import json, subprocess, sys
+
+change = json.load(sys.stdin)            # {"source": …, "added": [...], "removed": [...], ...}
+if "tokensaver" in change["added"]:
+    subprocess.run(["dotnet", "tool", "install", "-g", "TokenSaver.Mcp"], check=True)
 ```
 
 ### Central configuration
