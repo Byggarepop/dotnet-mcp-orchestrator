@@ -819,7 +819,9 @@ in its `env` block):
 binary takes `--on-config-change` directly.)
 
 - **When:** after every *applied* reload, in both modes — a local-file edit or a changed central
-  URL. Not at startup, and not when a reload was rejected (malformed config). Runs are
+  URL — and after a skill refresh (a `git`/`http` source poll or a `directory` source file event)
+  that changed the served skills. Not at startup, and not when a reload was rejected (malformed
+  config). Runs are
   serialized; a run is killed after `MCP_ORCHESTRATOR_ON_CONFIG_CHANGE_TIMEOUT_SECONDS`
   (default 120).
 - **Interpreter by extension:** `.ps1` → `pwsh` (Windows falls back to `powershell`), `.py` →
@@ -832,12 +834,16 @@ binary takes `--on-config-change` directly.)
 
   | Variable | Value |
   | --- | --- |
-  | `MCP_ORCHESTRATOR_CHANGE_SOURCE` | The config file path or central URL. |
+  | `MCP_ORCHESTRATOR_CHANGE_SOURCE` | The config file path or central URL; for a skill refresh, the ids of the skill sources whose skills changed. |
+  | `MCP_ORCHESTRATOR_CHANGE_TRIGGER` | `config-change`, `scheduled-refresh` (git/http skill poll) or `directory-change` (directory skill source). |
   | `MCP_ORCHESTRATOR_CHANGE_ADDED` | Capabilities new in this reload. |
   | `MCP_ORCHESTRATOR_CHANGE_REMOVED` | Capabilities gone. |
   | `MCP_ORCHESTRATOR_CHANGE_RESTARTED` | Capabilities whose launch definition changed. |
   | `MCP_ORCHESTRATOR_CHANGE_UPDATED` | Capabilities whose metadata changed in place. |
-  | `MCP_ORCHESTRATOR_CHANGE_JSON` | The same as one JSON object (`source`, `changedAtUtc`, `added`, `removed`, `restarted`, `updated`, `unchanged`). |
+  | `MCP_ORCHESTRATOR_CHANGE_SKILLS_ADDED` | Skills (by name) that started being served. |
+  | `MCP_ORCHESTRATOR_CHANGE_SKILLS_REMOVED` | Skills no longer served. |
+  | `MCP_ORCHESTRATOR_CHANGE_SKILLS_UPDATED` | Skills whose content (integrity hash) or source changed. |
+  | `MCP_ORCHESTRATOR_CHANGE_JSON` | The same as one JSON object (`source`, `trigger`, `changedAtUtc`, `added`, `removed`, `restarted`, `updated`, `unchanged`, `skillsAdded`, `skillsRemoved`, `skillsUpdated`). |
 
   The JSON is also written to the script's stdin, which is then closed.
 - **Output:** the script's stdout and stderr lines go to the orchestrator log prefixed `[hook]`
@@ -858,6 +864,10 @@ Write-Output "config changed: $env:MCP_ORCHESTRATOR_CHANGE_SOURCE"   # lands in 
 if ($added -contains 'tokensaver') { dotnet tool install -g TokenSaver.Mcp }
 if ($added -contains 'database')   { & "$PSScriptRoot\setup-dev-db.ps1" }
 if ($removed.Count -gt 0)          { Write-Output "removed: $($removed -join ', ')" }
+
+# Skills: a new or changed skill in the team's git source, picked up by its poll
+$skills = @($env:MCP_ORCHESTRATOR_CHANGE_SKILLS_ADDED, $env:MCP_ORCHESTRATOR_CHANGE_SKILLS_UPDATED) -join ';' -split ';' | Where-Object { $_ }
+if ($skills -contains 'publish-release') { Write-Output "release skill changed; review scripts/release.ps1" }
 ```
 
 The same in Python, reading the JSON from stdin instead of the variables:
@@ -866,9 +876,11 @@ The same in Python, reading the JSON from stdin instead of the variables:
 # scripts/on-mcp-change.py
 import json, subprocess, sys
 
-change = json.load(sys.stdin)            # {"source": …, "added": [...], "removed": [...], ...}
+change = json.load(sys.stdin)            # {"source": …, "trigger": …, "added": [...], "skillsAdded": [...], ...}
 if "tokensaver" in change["added"]:
     subprocess.run(["dotnet", "tool", "install", "-g", "TokenSaver.Mcp"], check=True)
+for skill in change["skillsAdded"] + change["skillsUpdated"]:
+    print(f"skill changed: {skill}")
 ```
 
 ### Central configuration

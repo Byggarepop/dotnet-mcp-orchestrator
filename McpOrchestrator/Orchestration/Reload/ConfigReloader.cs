@@ -70,7 +70,7 @@ internal sealed class ConfigReloader
             if (_hook is not null && reason == ReloadReason.Change)
             {
                 // Outside the reload gate: a slow script must not block the next reload's apply.
-                await _hook.RunAsync(new ConfigChangeEvent(_source.Description, diff), cancellationToken);
+                await _hook.RunAsync(new ConfigChangeEvent(_source.Description, diff, "config-change"), cancellationToken);
             }
 
             return diff;
@@ -109,7 +109,8 @@ internal sealed class ConfigReloader
             {
                 // The skills section rides on the catalog; hand it over after the capability swap
                 // so a reload that changes both is never observed half-applied. The sink never throws.
-                await _skills.ApplyAsync(next.Catalog.Skills, cancellationToken);
+                var skills = await _skills.ApplyAsync(next.Catalog.Skills, cancellationToken);
+                diff = diff with { Skills = skills };
             }
 
             _logger.LogInformation(
@@ -230,10 +231,12 @@ internal enum ReloadReason
 }
 
 /// <summary>What one applied reload did, per capability name. <c>Restarted</c> = launch-relevant
-/// fields changed, old connection retired, new one starts lazily on next use.</summary>
+/// fields changed, old connection retired, new one starts lazily on next use. <c>Skills</c> is
+/// what the accompanying skill catalog rebuild changed, or <c>null</c> when no skills sink ran.</summary>
 internal sealed record ReloadDiff(
     IReadOnlyList<string> Added,
     IReadOnlyList<string> Removed,
     IReadOnlyList<string> Restarted,
     IReadOnlyList<string> MetadataUpdated,
-    int Unchanged);
+    int Unchanged,
+    Skills.SkillDiff? Skills = null);

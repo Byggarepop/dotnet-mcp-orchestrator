@@ -7,6 +7,18 @@ All notable changes to this project are documented here. The format is based on
 The release workflow reads the section matching the tag (e.g. `## [0.1.0]` for tag `v0.1.0`) and
 uses it as the GitHub Release notes — so keep an entry per released version.
 
+## [Unreleased]
+
+### Added
+- The `--on-config-change` hook now reports skill changes. Every run carries
+  `MCP_ORCHESTRATOR_CHANGE_SKILLS_ADDED`, `…_SKILLS_REMOVED` and `…_SKILLS_UPDATED` (skill names;
+  updated = content hash or source changed) plus `MCP_ORCHESTRATOR_CHANGE_TRIGGER`, and the JSON
+  gains `trigger`, `skillsAdded`, `skillsRemoved`, `skillsUpdated`. The hook also runs after a
+  skill refresh that the config pipeline did not drive — a `git`/`http` source poll or a
+  `directory` source file event — when it changed the served skills; `source` then lists the
+  ids of the skill sources involved. The `skill catalog rebuilt` log line ends with the same
+  added/removed/updated counts.
+
 ## [0.7.4] - 2026-10-13
 
 ### Added
