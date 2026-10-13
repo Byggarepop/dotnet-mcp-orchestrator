@@ -19,6 +19,11 @@ uses it as the GitHub Release notes — so keep an entry per released version.
   ids of the skill sources involved. The `skill catalog rebuilt` log line ends with the same
   added/removed/updated counts.
 
+### Fixed
+- On Linux/macOS the `--on-config-change` hook could report `Config change hook failed` when the
+  script exited without reading stdin: closing the pipe afterwards raised a broken-pipe error.
+  The close is now guarded like the write.
+
 ## [0.7.4] - 2026-10-13
 
 ### Added

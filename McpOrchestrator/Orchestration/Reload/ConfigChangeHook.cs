@@ -174,12 +174,13 @@ internal sealed class ScriptConfigChangeHook : IConfigChangeHook
             try
             {
                 await process.StandardInput.WriteAsync(json);
+                process.StandardInput.Close();
             }
             catch (IOException)
             {
-                // The script exited without reading stdin; nothing to do.
+                // The script exited without reading stdin: the write, or the flush on close,
+                // hits a broken pipe (EPIPE on Linux/macOS). Nothing to do — the script ran.
             }
-            process.StandardInput.Close();
 
             using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             timeoutCts.CancelAfter(_timeout);
