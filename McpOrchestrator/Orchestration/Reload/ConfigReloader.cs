@@ -19,6 +19,7 @@ internal sealed class ConfigReloader
     private readonly IDownstreamConnectionLifecycle _connections;
     private readonly ILogger _logger;
     private readonly Skills.ISkillsReloadSink? _skills;
+    private readonly IConfigChangeHook? _hook;
 
     // Reloads are serialized; readers never block (they read the registry's volatile snapshot).
     private readonly SemaphoreSlim _reloadGate = new(1, 1);
@@ -33,22 +34,26 @@ internal sealed class ConfigReloader
         CapabilityRegistry registry,
         IDownstreamConnectionLifecycle connections,
         ILogger logger,
-        Skills.ISkillsReloadSink? skills = null)
+        Skills.ISkillsReloadSink? skills = null,
+        IConfigChangeHook? hook = null)
     {
         _source = source;
         _registry = registry;
         _connections = connections;
         _logger = logger;
         _skills = skills;
+        _hook = hook;
         _lastEntries = registry.Current.Capabilities;
     }
 
     /// <summary>
     /// Runs one full reload cycle: load + validate from the source, then diff + apply. Returns the
     /// applied diff, or <c>null</c> when the new config was rejected and the running one was kept.
-    /// Never throws — a reload failure must never take the server down.
+    /// Never throws — a reload failure must never take the server down. After an applied reload
+    /// the change hook (if any) runs, unless <paramref name="reason"/> is
+    /// <see cref="ReloadReason.Startup"/>: the hook announces changes, not the initial load.
     /// </summary>
-    public async Task<ReloadDiff?> ReloadAsync(CancellationToken cancellationToken)
+    public async Task<ReloadDiff?> ReloadAsync(CancellationToken cancellationToken, ReloadReason reason = ReloadReason.Change)
     {
         try
         {
@@ -61,7 +66,14 @@ internal sealed class ConfigReloader
                 return null; // Rejection already logged; last-known-good stays live.
             }
 
-            return await ApplyAsync(loaded, cancellationToken);
+            var diff = await ApplyAsync(loaded, cancellationToken);
+            if (_hook is not null && reason == ReloadReason.Change)
+            {
+                // Outside the reload gate: a slow script must not block the next reload's apply.
+                await _hook.RunAsync(new ConfigChangeEvent(_source.Description, diff), cancellationToken);
+            }
+
+            return diff;
         }
         catch (Exception ex)
         {
@@ -208,6 +220,13 @@ internal sealed class ConfigReloader
 
         return byName;
     }
+}
+
+/// <summary>Why a reload runs: the initial load at startup (central mode), or a detected change.</summary>
+internal enum ReloadReason
+{
+    Startup,
+    Change,
 }
 
 /// <summary>What one applied reload did, per capability name. <c>Restarted</c> = launch-relevant

@@ -108,6 +108,10 @@ dotnet tool execute McpOrchestrator --yes init --central-url https://devops.exam
 Repeat for ProjectB with its own values. Commit only values that are the same on every
 developer's machine.
 
+Need the project to react when the central catalog changes (install a tool for a newly added
+capability, say)? Add `"--", "--on-config-change", "C:/ProjectA/scripts/on-mcp-change.ps1"` to
+the `args` above; see [Reacting to config changes](../McpOrchestrator/README.md#reacting-to-config-changes-on-config-change).
+
 Skills follow the same pattern: a `directory` source in the central `skills` section with
 `"path": "${PROJECT_SKILLS_DIR}"` serves whatever folder each project points the variable at
 (see [Central catalog with per-project skills](skills.md#central-catalog-with-per-project-skills)).

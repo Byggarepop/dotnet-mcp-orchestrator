@@ -7,6 +7,17 @@ All notable changes to this project are documented here. The format is based on
 The release workflow reads the section matching the tag (e.g. `## [0.1.0]` for tag `v0.1.0`) and
 uses it as the GitHub Release notes — so keep an entry per released version.
 
+## [Unreleased]
+
+### Added
+- `--on-config-change <script>` (or `MCP_ORCHESTRATOR_ON_CONFIG_CHANGE`): run a project script
+  after every applied config reload, from a local file edit or a changed central URL alike. The
+  interpreter follows the extension (`.ps1`, `.py`, `.sh`, `.cmd`/`.bat`; other files run
+  directly), the diff arrives as `MCP_ORCHESTRATOR_CHANGE_*` environment variables and as JSON on
+  stdin, output lands in the orchestrator log as `[hook]` lines, and a run is killed after
+  `MCP_ORCHESTRATOR_ON_CONFIG_CHANGE_TIMEOUT_SECONDS` (default 120). Not run at startup or for a
+  rejected reload; a failing script never undoes the reload.
+
 ## [0.7.3] - 2026-10-11
 
 ### Fixed

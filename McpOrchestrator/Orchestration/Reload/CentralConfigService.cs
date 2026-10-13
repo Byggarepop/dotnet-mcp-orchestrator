@@ -19,11 +19,13 @@ internal sealed class CentralConfigService : IHostedService, IDisposable
     private readonly CentralConfigCache _cache;
     private readonly HttpMessageHandler? _handler;
     private readonly Skills.ISkillsReloadSink? _skills;
+    private readonly IConfigChangeHook? _hook;
     private HttpConfigPollTrigger? _trigger;
 
     /// <param name="handler">HTTP handler override for tests; null uses a real one.</param>
     /// <param name="cache">Cache override for tests; null uses <c>~/.mcpOrchestrator</c>.</param>
     /// <param name="skills">Skills sink; null (e.g. in tests) leaves skill reloads unwired.</param>
+    /// <param name="hook">Change hook (<c>--on-config-change</c>); null when none is configured.</param>
     public CentralConfigService(
         CentralConfigOptions options,
         CapabilityRegistry registry,
@@ -31,7 +33,8 @@ internal sealed class CentralConfigService : IHostedService, IDisposable
         ILogger<CentralConfigService> logger,
         HttpMessageHandler? handler = null,
         CentralConfigCache? cache = null,
-        Skills.ISkillsReloadSink? skills = null)
+        Skills.ISkillsReloadSink? skills = null,
+        IConfigChangeHook? hook = null)
     {
         _options = options;
         _registry = registry;
@@ -40,6 +43,7 @@ internal sealed class CentralConfigService : IHostedService, IDisposable
         _handler = handler;
         _cache = cache ?? new CentralConfigCache();
         _skills = skills;
+        _hook = hook;
     }
 
     public async Task StartAsync(CancellationToken cancellationToken)
@@ -88,9 +92,10 @@ internal sealed class CentralConfigService : IHostedService, IDisposable
         }
 
         var reloader = new ConfigReloader(
-            new CentralConfigSource(_options, _cache, _logger), _registry, _connections, _logger, _skills);
+            new CentralConfigSource(_options, _cache, _logger), _registry, _connections, _logger, _skills, _hook);
 
-        var applied = await reloader.ReloadAsync(cancellationToken);
+        // The initial load is not a "change": the hook announces edits made during the session.
+        var applied = await reloader.ReloadAsync(cancellationToken, ReloadReason.Startup);
         if (applied is null)
         {
             trigger.Dispose();
