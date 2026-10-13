@@ -791,6 +791,64 @@ updated in place / unchanged).
 - Hot reload is inactive when the server started without a config file (there is nothing to
   watch); creating the file still requires a restart.
 
+### Reacting to config changes (`--on-config-change`)
+
+A project can run its own script every time a config change is applied — for example to install
+a tool a newly added capability needs, or to regenerate project files when the central catalog
+changes. Pass the script in the orchestrator's `args` (or set `MCP_ORCHESTRATOR_ON_CONFIG_CHANGE`
+in its `env` block):
+
+```jsonc
+// C:\ProjectA\.mcp.json
+{
+  "mcpServers": {
+    "orchestrator": {
+      "type": "stdio",
+      "command": "dotnet",
+      "args": ["tool", "execute", "McpOrchestrator", "--yes", "--", "--on-config-change", "C:/ProjectA/scripts/on-mcp-change.ps1"],
+      "env": {
+        "MCP_ORCHESTRATOR_CONFIG_URL": "https://devops.example.com/mcp/orchestrator.config.json",
+        "PROJECT_ROOT": "C:/ProjectA"
+      }
+    }
+  }
+}
+```
+
+(`--` separates `dotnet tool execute`'s own options from the orchestrator's; the Native-AOT
+binary takes `--on-config-change` directly.)
+
+- **When:** after every *applied* reload, in both modes — a local-file edit or a changed central
+  URL. Not at startup, and not when a reload was rejected (malformed config). Runs are
+  serialized; a run is killed after `MCP_ORCHESTRATOR_ON_CONFIG_CHANGE_TIMEOUT_SECONDS`
+  (default 120).
+- **Interpreter by extension:** `.ps1` → `pwsh` (Windows falls back to `powershell`), `.py` →
+  `python` (`python3` on macOS/Linux), `.sh` → `bash`, `.cmd`/`.bat` → `cmd /c`; any other file
+  runs directly. The working directory is the script's folder.
+- **What the script gets.** Environment variables, with capability names `;`-separated:
+
+  | Variable | Value |
+  | --- | --- |
+  | `MCP_ORCHESTRATOR_CHANGE_SOURCE` | The config file path or central URL. |
+  | `MCP_ORCHESTRATOR_CHANGE_ADDED` | Capabilities new in this reload. |
+  | `MCP_ORCHESTRATOR_CHANGE_REMOVED` | Capabilities gone. |
+  | `MCP_ORCHESTRATOR_CHANGE_RESTARTED` | Capabilities whose launch definition changed. |
+  | `MCP_ORCHESTRATOR_CHANGE_UPDATED` | Capabilities whose metadata changed in place. |
+  | `MCP_ORCHESTRATOR_CHANGE_JSON` | The same as one JSON object (`source`, `changedAtUtc`, `added`, `removed`, `restarted`, `updated`, `unchanged`). |
+
+  The JSON is also written to the script's stdin, which is then closed.
+- **Output:** the script's stdout and stderr lines go to the orchestrator log prefixed `[hook]`
+  (never to the MCP stdout), followed by one line with the exit code and duration. A failing or
+  missing script never undoes the reload.
+
+```powershell
+# scripts/on-mcp-change.ps1
+$added = $env:MCP_ORCHESTRATOR_CHANGE_ADDED -split ';' | Where-Object { $_ }
+if ($added -contains 'tokensaver') {
+    dotnet tool install -g TokenSaver.Mcp
+}
+```
+
 ### Central configuration
 
 For a team/org, serve **one shared catalog from an HTTPS URL** — update it in one place and every

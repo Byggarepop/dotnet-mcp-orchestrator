@@ -16,19 +16,23 @@ internal sealed class ConfigHotReloadService : IHostedService, IDisposable
     private readonly IDownstreamConnectionLifecycle _connections;
     private readonly ILogger<ConfigHotReloadService> _logger;
     private readonly Skills.ISkillsReloadSink? _skills;
+    private readonly IConfigChangeHook? _hook;
     private IConfigReloadTrigger? _trigger;
 
     /// <param name="skills">Skills sink; null (e.g. in tests) leaves skill reloads unwired.</param>
+    /// <param name="hook">Change hook (<c>--on-config-change</c>); null when none is configured.</param>
     public ConfigHotReloadService(
         CapabilityRegistry registry,
         IDownstreamConnectionLifecycle connections,
         ILogger<ConfigHotReloadService> logger,
-        Skills.ISkillsReloadSink? skills = null)
+        Skills.ISkillsReloadSink? skills = null,
+        IConfigChangeHook? hook = null)
     {
         _registry = registry;
         _connections = connections;
         _logger = logger;
         _skills = skills;
+        _hook = hook;
     }
 
     /// <summary>True when the user opted out via <c>MCP_ORCHESTRATOR_NO_RELOAD=1</c>.</summary>
@@ -50,7 +54,8 @@ internal sealed class ConfigHotReloadService : IHostedService, IDisposable
             return Task.CompletedTask;
         }
 
-        var reloader = new ConfigReloader(new FileConfigSource(configPath, _logger), _registry, _connections, _logger, _skills);
+        var reloader = new ConfigReloader(
+            new FileConfigSource(configPath, _logger), _registry, _connections, _logger, _skills, _hook);
         _trigger = new ConfigFileWatchTrigger(configPath);
         _trigger.Start(() => reloader.ReloadAsync(CancellationToken.None));
 

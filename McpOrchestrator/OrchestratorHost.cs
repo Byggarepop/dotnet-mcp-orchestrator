@@ -86,6 +86,17 @@ public static class OrchestratorHost
         builder.Services.AddSingleton<IDownstreamConnectionManager>(sp => sp.GetRequiredService<DownstreamConnectionManager>());
         builder.Services.AddSingleton<IDownstreamConnectionLifecycle>(sp => sp.GetRequiredService<DownstreamConnectionManager>());
 
+        // Optional change hook (--on-config-change <script> or MCP_ORCHESTRATOR_ON_CONFIG_CHANGE):
+        // a user script run after every applied reload, in either mode. Registered as the
+        // interface so both reload services pick it up by DI; absent → the services get null.
+        var hookScript = Orchestration.Reload.ScriptConfigChangeHook.ResolveScriptPath(args);
+        if (hookScript is not null)
+        {
+            builder.Services.AddSingleton<Orchestration.Reload.IConfigChangeHook>(sp =>
+                Orchestration.Reload.ScriptConfigChangeHook.FromArguments(
+                    args, sp.GetRequiredService<ILoggerFactory>().CreateLogger("ConfigChangeHook"))!);
+        }
+
         // Config reload trigger, one of the two (registered before AddMcpServer so its StartAsync
         // — including central mode's initial fetch — completes before the MCP session opens):
         //  - file mode: watch the config file (on by default; MCP_ORCHESTRATOR_NO_RELOAD=1 opts out).

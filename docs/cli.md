@@ -29,11 +29,12 @@ meta-tools (`list_capabilities`, `discover_tools`, `route`) plus the skills tool
 (`list_skills`, `get_skill`, `get_skill_file`) and relays calls to the downstream servers in
 its config.
 
-**Option:**
+**Options:**
 
 | Flag | Meaning |
 | --- | --- |
 | `--trace-out <path>` | Append one JSONL line per discover/route interaction, for later replay with `profile --trace`. |
+| `--on-config-change <path>` | Run this script after every applied config reload (local file edit or central-URL change). `.ps1`, `.py`, `.sh`, `.cmd`/`.bat` pick their interpreter by extension; anything else runs directly. See [Reacting to config changes](https://github.com/Byggarepop/dotnet-mcp-orchestrator/blob/main/McpOrchestrator/README.md#reacting-to-config-changes-on-config-change). |
 
 **Environment variables** (set them in the `env` block of the orchestrator's entry in your
 host config):
@@ -45,6 +46,8 @@ host config):
 | `MCP_ORCHESTRATOR_CONFIG_AUTH` | Verbatim `Authorization` header for the central config URL. Set as an OS-level env var, never in a committed file. |
 | `MCP_ORCHESTRATOR_CONFIG_POLL_SECONDS` | Central-config poll interval. Default 300, minimum 10. |
 | `MCP_ORCHESTRATOR_NO_RELOAD` | `1` disables config hot reload (file watching). |
+| `MCP_ORCHESTRATOR_ON_CONFIG_CHANGE` | Same as `--on-config-change`. |
+| `MCP_ORCHESTRATOR_ON_CONFIG_CHANGE_TIMEOUT_SECONDS` | How long the change script may run before it is killed. Default 120. |
 | `MCP_ORCHESTRATOR_TRACE_OUT` | Same as `--trace-out`. |
 | `MCP_ORCHESTRATOR_LOG_DIR` | Directory for the mirrored log file (default `~/.mcpOrchestrator`); `off` disables file logging. |
 | `MCP_ORCHESTRATOR_DEBUG` | `launch` or `1` pauses startup until a debugger attaches. Leave unset normally. |
