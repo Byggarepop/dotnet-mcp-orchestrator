@@ -87,8 +87,9 @@ public static class OrchestratorHost
         builder.Services.AddSingleton<IDownstreamConnectionLifecycle>(sp => sp.GetRequiredService<DownstreamConnectionManager>());
 
         // Optional change hook (--on-config-change <script> or MCP_ORCHESTRATOR_ON_CONFIG_CHANGE):
-        // a user script run after every applied reload, in either mode. Registered as the
-        // interface so both reload services pick it up by DI; absent → the services get null.
+        // a user script run after every applied reload, in either mode, and after a skill refresh
+        // that changed the served skills. Registered as the interface so the reload services and
+        // SkillsReloadService pick it up by DI; absent → they get null.
         var hookScript = Orchestration.Reload.ScriptConfigChangeHook.ResolveScriptPath(args);
         if (hookScript is not null)
         {
@@ -120,7 +121,14 @@ public static class OrchestratorHost
         // without a restart; with no section they answer with an empty catalog. Registered before
         // CapabilityAdvertisementService so the advertisement sees the loaded skill catalog.
         builder.Services.AddSingleton<Orchestration.Skills.SkillRegistry>();
-        builder.Services.AddSingleton<Orchestration.Skills.SkillsReloadService>();
+        builder.Services.AddSingleton<Orchestration.Skills.SkillsReloadService>(sp =>
+            new Orchestration.Skills.SkillsReloadService(
+                sp.GetRequiredService<Orchestration.Skills.SkillRegistry>(),
+                sp.GetRequiredService<CapabilityRegistry>(),
+                sp.GetRequiredService<ILogger<Orchestration.Skills.SkillsReloadService>>())
+            {
+                ChangeHook = sp.GetService<Orchestration.Reload.IConfigChangeHook>(),
+            });
         builder.Services.AddSingleton<Orchestration.Skills.ISkillsReloadSink>(
             sp => sp.GetRequiredService<Orchestration.Skills.SkillsReloadService>());
         builder.Services.AddHostedService(

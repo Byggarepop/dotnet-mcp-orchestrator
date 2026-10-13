@@ -93,6 +93,8 @@ public sealed class ConfigChangeHookTests
         var info = ScriptConfigChangeHook.BuildStartInfo("/x/hook.ps1", payload, json);
 
         Assert.Equal("https://example/orchestrator.json", info.Environment["MCP_ORCHESTRATOR_CHANGE_SOURCE"]);
+        Assert.Equal("config-change", info.Environment["MCP_ORCHESTRATOR_CHANGE_TRIGGER"]);
+        Assert.Equal("", info.Environment["MCP_ORCHESTRATOR_CHANGE_SKILLS_ADDED"]);
         Assert.Equal("jira;codegen", info.Environment["MCP_ORCHESTRATOR_CHANGE_ADDED"]);
         Assert.Equal("old", info.Environment["MCP_ORCHESTRATOR_CHANGE_REMOVED"]);
         Assert.Equal("db", info.Environment["MCP_ORCHESTRATOR_CHANGE_RESTARTED"]);
@@ -116,8 +118,32 @@ public sealed class ConfigChangeHookTests
         Assert.NotNull(diff);
         var change = Assert.Single(hook.Changes);
         Assert.Equal("stub-source", change.Source);
+        Assert.Equal("config-change", change.Trigger);
         Assert.Equal(new[] { "codegen" }, change.Diff.Added);
         Assert.Equal(1, change.Diff.Unchanged);
+    }
+
+    [Fact]
+    public async Task Skill_diff_from_the_skills_sink_rides_on_the_change()
+    {
+        var hook = new RecordingHook();
+        var sink = new StubSkillsSink(new McpOrchestrator.Orchestration.Skills.SkillDiff(["publish-release"], [], ["release-notes"], ["orchestrator-repo"]));
+        var registry = new CapabilityRegistry(CapabilityCatalog.FromDescriptors([Cap("jira")], NullLogger.Instance));
+        var reloader = new ConfigReloader(
+            new StubSource(Next(Cap("jira"))), registry, new SpyLifecycle(), NullLogger.Instance, sink, hook);
+
+        await reloader.ReloadAsync(CancellationToken.None);
+
+        var change = Assert.Single(hook.Changes);
+        var payload = ScriptConfigChangeHook.ToPayload(change);
+        Assert.Equal(new[] { "publish-release" }, payload.SkillsAdded);
+        Assert.Equal(new[] { "release-notes" }, payload.SkillsUpdated);
+        Assert.Empty(payload.SkillsRemoved);
+        var json = System.Text.Json.JsonSerializer.Serialize(payload, ConfigChangeJsonContext.Default.ConfigChangePayload);
+        Assert.Contains("\"skillsAdded\":[\"publish-release\"]", json);
+        var info = ScriptConfigChangeHook.BuildStartInfo("/x/hook.ps1", payload, json);
+        Assert.Equal("publish-release", info.Environment["MCP_ORCHESTRATOR_CHANGE_SKILLS_ADDED"]);
+        Assert.Equal("release-notes", info.Environment["MCP_ORCHESTRATOR_CHANGE_SKILLS_UPDATED"]);
     }
 
     [Fact]
@@ -218,9 +244,10 @@ public sealed class ConfigChangeHookTests
 
     private static ConfigChangePayload Payload(
         string[]? added = null, string[]? removed = null, string[]? restarted = null, string[]? updated = null) =>
-        new("https://example/orchestrator.json", DateTimeOffset.UnixEpoch,
+        new("https://example/orchestrator.json", "config-change", DateTimeOffset.UnixEpoch,
             added ?? Array.Empty<string>(), removed ?? Array.Empty<string>(),
-            restarted ?? Array.Empty<string>(), updated ?? Array.Empty<string>(), 3);
+            restarted ?? Array.Empty<string>(), updated ?? Array.Empty<string>(), 3,
+            Array.Empty<string>(), Array.Empty<string>(), Array.Empty<string>());
 
     private static CapabilityDescriptor Cap(string name) => new()
     {
@@ -248,6 +275,13 @@ public sealed class ConfigChangeHookTests
         public StubSource(ReloadedConfig? next) => _next = next;
         public string Description => "stub-source";
         public Task<ReloadedConfig?> TryLoadAsync(CancellationToken cancellationToken) => Task.FromResult(_next);
+    }
+
+    private sealed class StubSkillsSink : McpOrchestrator.Orchestration.Skills.ISkillsReloadSink
+    {
+        private readonly McpOrchestrator.Orchestration.Skills.SkillDiff _diff;
+        public StubSkillsSink(McpOrchestrator.Orchestration.Skills.SkillDiff diff) => _diff = diff;
+        public Task<McpOrchestrator.Orchestration.Skills.SkillDiff> ApplyAsync(McpOrchestrator.Orchestration.Skills.SkillsOptions? options, CancellationToken cancellationToken) => Task.FromResult(_diff);
     }
 
     private sealed class RecordingHook : IConfigChangeHook

@@ -10,8 +10,9 @@ namespace McpOrchestrator.Orchestration.Skills;
 /// </summary>
 internal interface ISkillsReloadSink
 {
-    /// <summary>Applies a new skills section (<c>null</c> = skills off). Never throws.</summary>
-    Task ApplyAsync(SkillsOptions? options, CancellationToken cancellationToken);
+    /// <summary>Applies a new skills section (<c>null</c> = skills off). Never throws. Returns
+    /// what the resulting rebuild changed in the served skill catalog.</summary>
+    Task<SkillDiff> ApplyAsync(SkillsOptions? options, CancellationToken cancellationToken);
 }
 
 /// <summary>Why a skill catalog rebuild runs; carried into the log so the stages can be told apart.</summary>
@@ -85,6 +86,13 @@ public sealed class SkillsReloadService : IHostedService, ISkillsReloadSink, IDi
     }
 
     /// <summary>
+    /// The config change hook (<c>--on-config-change</c>), run after a skill refresh that the
+    /// config pipeline did not drive. Null when none is configured. A property rather than a
+    /// constructor parameter because the hook types are internal and this class is public.
+    /// </summary>
+    internal Reload.IConfigChangeHook? ChangeHook { get; set; }
+
+    /// <summary>
     /// Applies the startup config's skills section. In central-config mode the startup catalog is
     /// an empty seed and this is a no-op; the section arrives via the sink once the central fetch
     /// applies. Must be registered after the config services and before the MCP server.
@@ -99,11 +107,15 @@ public sealed class SkillsReloadService : IHostedService, ISkillsReloadSink, IDi
     }
 
     /// <inheritdoc />
+    Task<SkillDiff> ISkillsReloadSink.ApplyAsync(SkillsOptions? options, CancellationToken cancellationToken)
+        => ApplyAsync(options, SkillRebuildTrigger.ConfigChange, cancellationToken);
+
+    /// <summary>Applies a reloaded config's skills section (the sink path, without the diff).</summary>
     public Task ApplyAsync(SkillsOptions? options, CancellationToken cancellationToken)
         => ApplyAsync(options, SkillRebuildTrigger.ConfigChange, cancellationToken);
 
     /// <summary>Applies a skills section, attributing the resulting rebuild to <paramref name="trigger"/>.</summary>
-    internal async Task ApplyAsync(SkillsOptions? options, SkillRebuildTrigger trigger, CancellationToken cancellationToken)
+    internal async Task<SkillDiff> ApplyAsync(SkillsOptions? options, SkillRebuildTrigger trigger, CancellationToken cancellationToken)
     {
         try
         {
@@ -111,7 +123,7 @@ public sealed class SkillsReloadService : IHostedService, ISkillsReloadSink, IDi
             {
                 if (_disposed)
                 {
-                    return;
+                    return SkillDiff.Empty;
                 }
 
                 LogSourceChanges(_appliedOptions, options, trigger);
@@ -133,11 +145,12 @@ public sealed class SkillsReloadService : IHostedService, ISkillsReloadSink, IDi
                 }
             }
 
-            await RebuildAsync(trigger, cancellationToken);
+            return await RebuildAsync(trigger, cancellationToken);
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "applying skills config failed; keeping the current skill catalog");
+            return SkillDiff.Empty;
         }
     }
 
@@ -214,13 +227,14 @@ public sealed class SkillsReloadService : IHostedService, ISkillsReloadSink, IDi
     /// Loads every source and swaps the merged catalog in. Serialized; a trigger firing
     /// mid-rebuild coalesces into exactly one follow-up pass so no change is missed.
     /// </summary>
-    internal async Task RebuildAsync(SkillRebuildTrigger trigger, CancellationToken cancellationToken)
+    internal async Task<SkillDiff> RebuildAsync(SkillRebuildTrigger trigger, CancellationToken cancellationToken)
     {
         lock (_stateLock)
         {
             _pendingTrigger = trigger;
         }
 
+        var diff = SkillDiff.Empty;
         Interlocked.Exchange(ref _rebuildQueued, 1);
         while (Interlocked.CompareExchange(ref _rebuildQueued, 0, 1) == 1)
         {
@@ -250,12 +264,16 @@ public sealed class SkillsReloadService : IHostedService, ISkillsReloadSink, IDi
                 }
 
                 var catalog = SkillCatalog.Build(discovered, governance, _logger);
+                var previous = _registry.Current;
                 _registry.Swap(catalog);
+                diff = SkillDiff.Compute(previous, catalog);
                 _logger.LogInformation(
-                    "skill catalog rebuilt: {Count} skill(s) served; trigger={Trigger}; sources: {Sources} ({Names})",
+                    "skill catalog rebuilt: {Count} skill(s) served; trigger={Trigger}; sources: {Sources} ({Names}); "
+                    + "{Added} added, {Removed} removed, {Updated} updated",
                     catalog.Skills.Count, Describe(reason),
                     contributions.Count == 0 ? "none" : string.Join(", ", contributions),
-                    string.Join(", ", catalog.Skills.Select(s => s.Name)));
+                    string.Join(", ", catalog.Skills.Select(s => s.Name)),
+                    diff.Added.Count, diff.Removed.Count, diff.Updated.Count);
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
@@ -266,6 +284,20 @@ public sealed class SkillsReloadService : IHostedService, ISkillsReloadSink, IDi
                 _rebuildGate.Release();
             }
         }
+
+        // A refresh the config pipeline did not drive (a git/http poll, a directory file event)
+        // is the only place a skill-only change can be announced; config-driven rebuilds are
+        // announced by the config reloader together with the capability diff.
+        if (ChangeHook is { } hook && !diff.IsEmpty
+            && trigger is SkillRebuildTrigger.DirectoryChange or SkillRebuildTrigger.ScheduledRefresh)
+        {
+            var capabilities = new Reload.ReloadDiff([], [], [], [], _config.Current.Capabilities.Count, diff);
+            await hook.RunAsync(
+                new Reload.ConfigChangeEvent(string.Join(";", diff.Sources), capabilities, Describe(trigger)),
+                cancellationToken);
+        }
+
+        return diff;
     }
 
     private static string Describe(SkillRebuildTrigger trigger) => trigger switch
