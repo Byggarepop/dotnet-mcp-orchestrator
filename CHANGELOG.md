@@ -7,7 +7,7 @@ All notable changes to this project are documented here. The format is based on
 The release workflow reads the section matching the tag (e.g. `## [0.1.0]` for tag `v0.1.0`) and
 uses it as the GitHub Release notes — so keep an entry per released version.
 
-## [Unreleased]
+## [0.7.4] - 2026-10-13
 
 ### Added
 - `--on-config-change <script>` (or `MCP_ORCHESTRATOR_ON_CONFIG_CHANGE`): run a project script
