@@ -14,6 +14,14 @@ internal interface ISkillSource
 
     /// <summary>Loads the source's current skills, reporting where the content came from.</summary>
     Task<SkillSourceLoad> LoadAsync(CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Loads what the source already holds locally, without any network access, for the startup
+    /// pass that must finish before the MCP handshake can be answered (see
+    /// <see cref="SkillsReloadService.StartAsync"/>). Returns <c>null</c> when the source has no
+    /// separate local copy and should be loaded with <see cref="LoadAsync"/> as usual.
+    /// </summary>
+    SkillSourceLoad? LoadLocal() => null;
 }
 
 /// <summary>Where the skills returned by one <see cref="ISkillSource.LoadAsync"/> call came from.</summary>
@@ -27,6 +35,12 @@ internal enum SkillSourceFreshness
 
     /// <summary>The origin could not be reached and no earlier copy exists; the source yielded nothing.</summary>
     Unavailable,
+
+    /// <summary>Startup served the local copy without contacting the origin; a background refresh follows.</summary>
+    Local,
+
+    /// <summary>Startup found no local copy yet; the first fetch runs in the background.</summary>
+    Pending,
 }
 
 /// <summary>
@@ -40,6 +54,10 @@ internal sealed record SkillSourceLoad(IReadOnlyList<SkillSnapshot> Skills, Skil
     public static SkillSourceLoad Cached(IReadOnlyList<SkillSnapshot> skills) => new(skills, SkillSourceFreshness.Cached);
 
     public static SkillSourceLoad Unavailable() => new([], SkillSourceFreshness.Unavailable);
+
+    public static SkillSourceLoad Local(IReadOnlyList<SkillSnapshot> skills) => new(skills, SkillSourceFreshness.Local);
+
+    public static SkillSourceLoad Pending() => new([], SkillSourceFreshness.Pending);
 }
 
 /// <summary>A skill source rooted at a local directory, scanned recursively.</summary>

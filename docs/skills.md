@@ -103,7 +103,8 @@ orchestrator's environment (see [Per-project values](../McpOrchestrator/README.m
 `directory` scans recursively for `SKILL.md` files (a `FileSystemWatcher` picks up edits live).
 `git` shallow-clones via the `git` CLI into `~/.mcpOrchestrator/skills-cache/` and re-fetches
 every `pollSeconds` (default 300) — only the latest files, no history, and the cache is a
-disposable mirror that is hard-reset on every refresh. `http` fetches a discovery index (the
+disposable mirror that is hard-reset on every refresh. At startup a `git` source serves that cache
+as it is and fetches in the background (see [Startup](#startup-never-waits-on-the-network)). `http` fetches a discovery index (the
 [Agent Skills discovery format](https://agentskills.io); entries may add a `files` array to
 enumerate supporting files — plain HTTP has no directory listing). Invalid skills are logged and
 skipped, never fatal; on a name collision the earlier source in config order wins. A skills
@@ -286,8 +287,9 @@ info skill catalog rebuilt: 28 skill(s) served; trigger=config-change; sources: 
 info Config reloaded from https://…: 0 added, 0 removed, …
 ```
 
-- **Trigger** is one of `startup`, `config-change` (file watcher or central poll), `directory-change`
-  (a file event under a `directory` source) or `scheduled-refresh` (a git/http poll tick).
+- **Trigger** is one of `startup`, `startup-refresh` (the background fetch that follows startup),
+  `config-change` (file watcher or central poll), `directory-change` (a file event under a
+  `directory` source) or `scheduled-refresh` (a git/http poll tick).
 - **Source changes** are reported per id before any slow work: added, removed, or changed with the
   differing fields (`path`, `url`, `ref`, `indexUrl`, `pollSeconds`). A token or authorization
   change is reported as `token changed`, never by value; URLs are logged with any userinfo removed.
@@ -301,7 +303,34 @@ info Config reloaded from https://…: 0 added, 0 removed, …
   finished checkout. A cache folder with content but no `.git` (an interrupted clone) is logged
   as `clearing it before cloning`.
 - **Contribution** per source says `fresh content`, `cached content (origin unreachable)` or
-  `nothing (origin unreachable, no cache)`, and the `rebuilt` line repeats them.
+  `nothing (origin unreachable, no cache)`; at startup a git source says `the local copy (refresh
+  follows in the background)` or, before its first clone, `nothing yet (first fetch follows in the
+  background)`. The `rebuilt` line repeats them.
+
+### Startup never waits on the network
+
+The MCP server answers its client only after startup has finished, so a fetch at startup delays
+the handshake by however long the fetch takes — and a waiting sibling's lock by up to 75 s. Some
+hosts give up on a server that is not ready in time: the GitHub Copilot app drops a server that has
+not answered when a new session is created, and the session then reports
+`MCP server "orchestrator" connection was cancelled` on every call. So startup (and central mode's
+initial load) never touches the network or the cache lock: each `git` source serves its cached
+checkout as it is, and the fetch runs right after, in the background:
+
+```
+info skill source team: 26 skill(s) loaded from the local copy (refresh follows in the background)
+info skill catalog rebuilt: 28 skill(s) served; trigger=startup; …
+info skills startup served local copies without waiting for the network; refreshing team in the background
+info Advertising 8 capabilities in the initialize handshake (… skills hint included, …)
+info skill source team: fetch started; …
+info skill catalog rebuilt: 28 skill(s) served; trigger=startup-refresh; …
+```
+
+The handshake's skills hint counts the cached skills. On the very first start (no cache yet) a git
+source contributes nothing until the background clone lands a second or two later, so that one
+session's handshake carries no skills hint; `list_skills` serves the skills once the clone is done.
+`directory` sources are local and load as before; `http` sources keep no cache, so they are still
+fetched before the handshake.
 
 Session startup also logs whether the skills-discovery hint made it into the handshake:
 `Advertising N capabilities in the initialize handshake (… skills hint included, 1612 chars)`.

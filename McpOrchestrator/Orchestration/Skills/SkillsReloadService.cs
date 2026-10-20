@@ -13,6 +13,14 @@ internal interface ISkillsReloadSink
     /// <summary>Applies a new skills section (<c>null</c> = skills off). Never throws. Returns
     /// what the resulting rebuild changed in the served skill catalog.</summary>
     Task<SkillDiff> ApplyAsync(SkillsOptions? options, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Applies the skills section of the config the process starts with (central mode's initial
+    /// fetch). Like <see cref="SkillsReloadService.StartAsync"/> it runs before the MCP handshake
+    /// can be answered, so it serves local copies and refreshes in the background. Never throws.
+    /// </summary>
+    Task<SkillDiff> ApplyStartupAsync(SkillsOptions? options, CancellationToken cancellationToken)
+        => ApplyAsync(options, cancellationToken);
 }
 
 /// <summary>Why a skill catalog rebuild runs; carried into the log so the stages can be told apart.</summary>
@@ -29,6 +37,9 @@ internal enum SkillRebuildTrigger
 
     /// <summary>A <c>git</c>/<c>http</c> source's poll timer fired.</summary>
     ScheduledRefresh,
+
+    /// <summary>The background refresh that follows a startup pass served from local copies.</summary>
+    StartupRefresh,
 }
 
 /// <summary>
@@ -70,6 +81,9 @@ public sealed class SkillsReloadService : IHostedService, ISkillsReloadSink, IDi
     private Timer? _debounceTimer;
     private bool _disposed;
 
+    // Cancels the post-startup background refresh on shutdown, so a hung fetch does not outlive the host.
+    private readonly CancellationTokenSource _lifetime = new();
+
     public SkillsReloadService(
         SkillRegistry registry,
         CapabilityRegistry config,
@@ -97,8 +111,20 @@ public sealed class SkillsReloadService : IHostedService, ISkillsReloadSink, IDi
     /// an empty seed and this is a no-op; the section arrives via the sink once the central fetch
     /// applies. Must be registered after the config services and before the MCP server.
     /// </summary>
+    /// <remarks>
+    /// Hosted services start one after another, and the MCP server's starts last, so the client's
+    /// first request is not answered until this returns. Startup therefore never touches the
+    /// network: sources with a local copy (a git checkout) are served from it, and the fetch runs
+    /// in the background once the server is up (see <see cref="StartupRefreshTask"/>). A host that
+    /// gives up on a server that is slow to answer its first request (the GitHub Copilot app drops
+    /// one that is not ready when a new session is created) would otherwise lose the whole
+    /// orchestrator for a session because of a skills fetch.
+    /// </remarks>
     public Task StartAsync(CancellationToken cancellationToken)
         => ApplyAsync(_config.Current.Skills, SkillRebuildTrigger.Startup, cancellationToken);
+
+    /// <summary>The background refresh started by the last startup pass, if any (test seam).</summary>
+    internal Task? StartupRefreshTask { get; private set; }
 
     public Task StopAsync(CancellationToken cancellationToken)
     {
@@ -109,6 +135,10 @@ public sealed class SkillsReloadService : IHostedService, ISkillsReloadSink, IDi
     /// <inheritdoc />
     Task<SkillDiff> ISkillsReloadSink.ApplyAsync(SkillsOptions? options, CancellationToken cancellationToken)
         => ApplyAsync(options, SkillRebuildTrigger.ConfigChange, cancellationToken);
+
+    /// <inheritdoc />
+    Task<SkillDiff> ISkillsReloadSink.ApplyStartupAsync(SkillsOptions? options, CancellationToken cancellationToken)
+        => ApplyAsync(options, SkillRebuildTrigger.Startup, cancellationToken);
 
     /// <summary>Applies a reloaded config's skills section (the sink path, without the diff).</summary>
     public Task ApplyAsync(SkillsOptions? options, CancellationToken cancellationToken)
@@ -145,7 +175,21 @@ public sealed class SkillsReloadService : IHostedService, ISkillsReloadSink, IDi
                 }
             }
 
-            return await RebuildAsync(trigger, cancellationToken);
+            if (trigger != SkillRebuildTrigger.Startup)
+            {
+                return await RebuildAsync(trigger, cancellationToken);
+            }
+
+            var (diff, deferred) = await RebuildCoreAsync(trigger, localOnly: true, cancellationToken);
+            if (deferred.Count > 0)
+            {
+                _logger.LogInformation(
+                    "skills startup served local copies without waiting for the network; refreshing {Sources} in the background",
+                    string.Join(", ", deferred));
+                StartupRefreshTask = Task.Run(() => RebuildSafelyAsync(SkillRebuildTrigger.StartupRefresh, _lifetime.Token));
+            }
+
+            return diff;
         }
         catch (Exception ex)
         {
@@ -228,6 +272,12 @@ public sealed class SkillsReloadService : IHostedService, ISkillsReloadSink, IDi
     /// mid-rebuild coalesces into exactly one follow-up pass so no change is missed.
     /// </summary>
     internal async Task<SkillDiff> RebuildAsync(SkillRebuildTrigger trigger, CancellationToken cancellationToken)
+        => (await RebuildCoreAsync(trigger, localOnly: false, cancellationToken)).Diff;
+
+    /// <param name="localOnly">Use each source's <see cref="ISkillSource.LoadLocal"/> where it has one (startup).</param>
+    /// <returns>The catalog diff, and the ids of sources that were served locally and still need a real load.</returns>
+    private async Task<(SkillDiff Diff, List<string> Deferred)> RebuildCoreAsync(
+        SkillRebuildTrigger trigger, bool localOnly, CancellationToken cancellationToken)
     {
         lock (_stateLock)
         {
@@ -235,6 +285,7 @@ public sealed class SkillsReloadService : IHostedService, ISkillsReloadSink, IDi
         }
 
         var diff = SkillDiff.Empty;
+        var deferred = new List<string>();
         Interlocked.Exchange(ref _rebuildQueued, 1);
         while (Interlocked.CompareExchange(ref _rebuildQueued, 0, 1) == 1)
         {
@@ -253,9 +304,19 @@ public sealed class SkillsReloadService : IHostedService, ISkillsReloadSink, IDi
 
                 var discovered = new List<SkillSnapshot>();
                 var contributions = new List<string>();
+                deferred.Clear();
                 foreach (var source in sources)
                 {
-                    var load = await source.LoadAsync(cancellationToken);
+                    var load = localOnly ? source.LoadLocal() : null;
+                    if (load is null)
+                    {
+                        load = await source.LoadAsync(cancellationToken);
+                    }
+                    else
+                    {
+                        deferred.Add(source.Id);
+                    }
+
                     discovered.AddRange(load.Skills);
                     contributions.Add($"{source.Id}={load.Skills.Count} {Describe(load.Freshness)}");
                     _logger.LogInformation(
@@ -297,7 +358,7 @@ public sealed class SkillsReloadService : IHostedService, ISkillsReloadSink, IDi
                 cancellationToken);
         }
 
-        return diff;
+        return (diff, deferred);
     }
 
     private static string Describe(SkillRebuildTrigger trigger) => trigger switch
@@ -306,6 +367,7 @@ public sealed class SkillsReloadService : IHostedService, ISkillsReloadSink, IDi
         SkillRebuildTrigger.ConfigChange => "config-change",
         SkillRebuildTrigger.DirectoryChange => "directory-change",
         SkillRebuildTrigger.ScheduledRefresh => "scheduled-refresh",
+        SkillRebuildTrigger.StartupRefresh => "startup-refresh",
         _ => trigger.ToString(),
     };
 
@@ -314,6 +376,8 @@ public sealed class SkillsReloadService : IHostedService, ISkillsReloadSink, IDi
         SkillSourceFreshness.Fresh => "fresh content",
         SkillSourceFreshness.Cached => "cached content (origin unreachable)",
         SkillSourceFreshness.Unavailable => "nothing (origin unreachable, no cache)",
+        SkillSourceFreshness.Local => "the local copy (refresh follows in the background)",
+        SkillSourceFreshness.Pending => "nothing yet (first fetch follows in the background)",
         _ => freshness.ToString(),
     };
 
@@ -393,11 +457,15 @@ public sealed class SkillsReloadService : IHostedService, ISkillsReloadSink, IDi
 
     /// <summary>Timer callbacks have no ambient error handling; RebuildAsync already never throws
     /// except for cancellation, which is irrelevant on a timer path.</summary>
-    private async Task RebuildSafelyAsync(SkillRebuildTrigger trigger)
+    private async Task RebuildSafelyAsync(SkillRebuildTrigger trigger, CancellationToken cancellationToken = default)
     {
         try
         {
-            await RebuildAsync(trigger, CancellationToken.None);
+            await RebuildAsync(trigger, cancellationToken);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            // Shutting down; nothing to report.
         }
         catch (Exception ex)
         {
@@ -429,6 +497,7 @@ public sealed class SkillsReloadService : IHostedService, ISkillsReloadSink, IDi
             }
 
             _disposed = true;
+            _lifetime.Cancel();
             TearDownSources();
             _debounceTimer?.Dispose();
         }

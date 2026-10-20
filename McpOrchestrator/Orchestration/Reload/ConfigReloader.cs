@@ -66,7 +66,7 @@ internal sealed class ConfigReloader
                 return null; // Rejection already logged; last-known-good stays live.
             }
 
-            var diff = await ApplyAsync(loaded, cancellationToken);
+            var diff = await ApplyAsync(loaded, cancellationToken, reason);
             if (_hook is not null && reason == ReloadReason.Change)
             {
                 // Outside the reload gate: a slow script must not block the next reload's apply.
@@ -90,7 +90,8 @@ internal sealed class ConfigReloader
     /// before disposing. Exposed separately so tests (and later trigger implementations that load
     /// from elsewhere) can drive diff + apply directly.
     /// </summary>
-    internal async Task<ReloadDiff> ApplyAsync(ReloadedConfig next, CancellationToken cancellationToken)
+    internal async Task<ReloadDiff> ApplyAsync(
+        ReloadedConfig next, CancellationToken cancellationToken, ReloadReason reason = ReloadReason.Change)
     {
         await _reloadGate.WaitAsync(cancellationToken);
         try
@@ -109,7 +110,10 @@ internal sealed class ConfigReloader
             {
                 // The skills section rides on the catalog; hand it over after the capability swap
                 // so a reload that changes both is never observed half-applied. The sink never throws.
-                var skills = await _skills.ApplyAsync(next.Catalog.Skills, cancellationToken);
+                // The startup load must not wait on the network (it delays the MCP handshake).
+                var skills = reason == ReloadReason.Startup
+                    ? await _skills.ApplyStartupAsync(next.Catalog.Skills, cancellationToken)
+                    : await _skills.ApplyAsync(next.Catalog.Skills, cancellationToken);
                 diff = diff with { Skills = skills };
             }
 
