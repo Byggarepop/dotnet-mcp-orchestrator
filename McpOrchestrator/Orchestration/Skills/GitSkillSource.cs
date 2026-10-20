@@ -107,6 +107,28 @@ internal sealed class GitSkillSource : ISkillSource
         }
     }
 
+    /// <summary>
+    /// Scans the cached checkout as it is, with no git command and no cache lock: startup must not
+    /// wait on the network (a fetch) or on a sibling instance's sync (the lock wait can reach
+    /// <see cref="LockWaitSeconds"/>), because the MCP handshake is answered only after startup.
+    /// A sibling mid-reset can at worst make this scan miss a file; the background refresh that
+    /// follows startup rescans under the lock and swaps in the settled result.
+    /// </summary>
+    public SkillSourceLoad? LoadLocal()
+    {
+        try
+        {
+            return HasCheckout()
+                ? SkillSourceLoad.Local(SkillDirectoryScanner.Scan(_cacheDir, Id, _logger))
+                : SkillSourceLoad.Pending();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "skill source {Source}: reading the cached checkout failed; the background refresh will retry", Id);
+            return SkillSourceLoad.Pending();
+        }
+    }
+
     /// <summary>What the log says about credentials: the token, or whatever git finds on its own.</summary>
     private string AuthLabel => string.IsNullOrEmpty(_token) ? "none (git credential helper)" : "token";
 

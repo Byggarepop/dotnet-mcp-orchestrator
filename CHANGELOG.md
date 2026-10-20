@@ -7,6 +7,21 @@ All notable changes to this project are documented here. The format is based on
 The release workflow reads the section matching the tag (e.g. `## [0.1.0]` for tag `v0.1.0`) and
 uses it as the GitHub Release notes — so keep an entry per released version.
 
+## [Unreleased]
+
+### Fixed
+- A new session in the GitHub Copilot app could fail every orchestrator call with
+  `MCP server "orchestrator" connection was cancelled`. The skills startup pass fetched each `git`
+  source before the MCP server started, so the first request waited for the fetch (about 1.2 s for
+  a GitHub repo; up to 75 s when another instance held the cache lock). The Copilot app drops an MCP
+  connection that has not answered when it creates a new session, and does not reconnect it.
+  Startup — and central mode's initial load — now serves each `git` source's cached checkout without
+  touching the network or the lock, and fetches right after in the background (log trigger
+  `startup-refresh`). With a cached checkout the handshake is ready in about 0.8 s regardless of
+  fetch time. On the very first start, before any clone, that session's handshake carries no skills
+  hint; the skills arrive once the background clone completes. Shutdown cancels a background fetch
+  that is still running.
+
 ## [0.7.5] - 2026-10-13
 
 ### Added
