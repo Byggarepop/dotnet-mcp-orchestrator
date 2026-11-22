@@ -10,6 +10,7 @@ using Microsoft.Extensions.Logging;
 //   dotnet run -- --persona jira       -> exposes get_issue, search_issues
 //   dotnet run -- --persona codegen    -> exposes generate_class
 //   dotnet run -- --persona diag       -> exposes echo, fail, slow (failure-mode testing)
+//   dotnet run -- --persona bench      -> exposes query_orders, get_order (token benchmarks)
 //   dotnet run                          -> exposes everything (no persona)
 var persona = GetArgValue(args, "--persona") ?? "all";
 
@@ -30,6 +31,9 @@ switch (persona.ToLowerInvariant())
         break;
     case "diag":
         mcp.WithTools<DiagnosticsTools>();
+        break;
+    case "bench":
+        mcp.WithTools<BenchTools>();
         break;
     default:
         mcp.WithTools<JiraTools>().WithTools<CodegenTools>().WithTools<DiagnosticsTools>();
