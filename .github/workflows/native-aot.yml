@@ -52,7 +52,9 @@ jobs:
         shell: bash
         env:
           MCP_ORCHESTRATOR_COMMAND: ${{ github.workspace }}/aot/${{ matrix.exe }}
-        run: dotnet run --project McpOrchestrator.SmokeTest -c Release -- --check-tools
+        run: |
+          dotnet run --project McpOrchestrator.SmokeTest -c Release -- --check-tools
+          dotnet run --project McpOrchestrator.SmokeTest -c Release -- --check-code-mode
 
       - name: Upload native binary
         uses: actions/upload-artifact@v7
