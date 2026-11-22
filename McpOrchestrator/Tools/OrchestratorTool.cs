@@ -182,8 +182,9 @@ public sealed class OrchestratorTool
     /// Collects the stderr a capability's process wrote since the given mark, for inclusion in a
     /// failure payload. Stderr arrives on a pipe read concurrently with the tool-call response,
     /// so the cause of a just-failed call may not have landed yet — poll briefly (bounded at
-    /// ~300ms, error paths only) before giving up. Returns null when nothing was captured; long
-    /// captures keep the head and tail with an omission marker in between.
+    /// ~300ms, error paths only) before giving up. Returns null when nothing was captured. Stack
+    /// frames and routine log entries are dropped (<see cref="ToolPayloads.TrimStderr"/>); long
+    /// captures then keep the head and tail with an omission marker in between.
     /// </summary>
     private static async Task<IReadOnlyList<string>?> CaptureStderrAsync(
         IDownstreamConnectionManager connections, string capability, long mark)
@@ -204,7 +205,7 @@ public sealed class OrchestratorTool
 
         // One more beat so the rest of a multi-line write (e.g. a stack trace) lands too.
         await Task.Delay(25, CancellationToken.None);
-        lines = connections.StderrSince(capability, mark);
+        lines = ToolPayloads.TrimStderr(connections.StderrSince(capability, mark));
 
         if (lines.Count <= MaxLines)
         {

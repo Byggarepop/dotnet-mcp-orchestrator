@@ -1,6 +1,7 @@
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using System.Text.RegularExpressions;
 using ModelContextProtocol.Protocol;
 
 namespace McpOrchestrator.Orchestration;
@@ -10,8 +11,78 @@ namespace McpOrchestrator.Orchestration;
 /// shape. Kept free of I/O and dependencies so the tricky parsing rules can be unit-tested
 /// directly. Used by the orchestrator tool methods.
 /// </summary>
-internal static class ToolPayloads
+internal static partial class ToolPayloads
 {
+    /// <summary>
+    /// Keeps the part of a downstream's stderr that explains a failure and drops what only costs
+    /// tokens: stack-frame lines (<c>at …</c>, <c>--- End of … ---</c>, the .NET/Node/Java form),
+    /// routine <c>info</c>/<c>dbug</c>/<c>trce</c> console-log entries with their indented
+    /// continuation lines, and exact repeats (servers often log one exception twice). Error and
+    /// warning entries, exception messages and plain lines are kept. One closing line says what
+    /// was omitted. When nothing would be left, the lines are returned unchanged.
+    /// </summary>
+    public static IReadOnlyList<string> TrimStderr(IReadOnlyList<string> lines)
+    {
+        var kept = new List<string>(lines.Count);
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        int frames = 0, logLines = 0, repeats = 0;
+        var inRoutineLogEntry = false;
+
+        foreach (var line in lines)
+        {
+            var trimmed = line.TrimStart();
+            if (trimmed.Length == line.Length)
+            {
+                // An unindented line starts a new entry; indented lines continue the current one.
+                inRoutineLogEntry = RoutineLogHeader().IsMatch(line);
+            }
+
+            if (inRoutineLogEntry)
+            {
+                logLines++;
+            }
+            else if (StackFrame().IsMatch(line))
+            {
+                frames++;
+            }
+            else if (!seen.Add(trimmed))
+            {
+                repeats++;
+            }
+            else
+            {
+                kept.Add(line);
+            }
+        }
+
+        if (kept.Count == 0)
+        {
+            return lines;
+        }
+
+        var omitted = new List<string>(3);
+        if (frames > 0) omitted.Add($"{frames} stack-frame");
+        if (logLines > 0) omitted.Add($"{logLines} info/debug log");
+        if (repeats > 0) omitted.Add($"{repeats} repeated");
+        if (omitted.Count > 0)
+        {
+            kept.Add($"… ({string.Join(", ", omitted)} line(s) omitted) …");
+        }
+        return kept;
+    }
+
+    /// <summary>A .NET console-logger header for a routine entry, e.g. <c>info: Category[12]</c>.</summary>
+    [GeneratedRegex(@"^(info|dbug|trce): \S")]
+    private static partial Regex RoutineLogHeader();
+
+    /// <summary>
+    /// An indented stack-frame line: <c>at Ns.Type.Method(…)</c> (.NET, Java), <c>at fn (file:1:2)</c>
+    /// or <c>at file:1:2</c> (Node), or a <c>--- End of … ---</c> separator. Prose such as
+    /// "at least one argument" does not match.
+    /// </summary>
+    [GeneratedRegex(@"^\s+(at [^\s(]+(\(|\s\(|:\d)|--- End of .* ---$)")]
+    private static partial Regex StackFrame();
+
     /// <summary>
     /// Echoes the sent arguments back as a <see cref="JsonObject"/> for auditing. Built by parsing
     /// each value's raw JSON rather than reflection-serializing an <c>object?</c> map, so it is
