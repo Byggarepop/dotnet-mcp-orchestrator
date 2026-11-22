@@ -86,7 +86,7 @@ retries instead of awaiting a dead connection.
 | Tool | Parameters | Purpose |
 | --- | --- | --- |
 | `list_capabilities` | — | List the downstream MCPs (name, summary, instructions). Call first. |
-| `discover_tools` | `capability` | Connect to one capability and list its tools + input schemas. |
+| `discover_tools` | `capability` | Connect to one capability and list its tools + input schemas. Optional when the capability's `instructions` already name the tool and its arguments. |
 | `route` | `capability`, `tool`, `arguments` | Forward a specific tool call (you pick the tool and fill the arguments) and return its result. |
 
 `route` returns JSON: `capability`, `tool`, `isError`, and the result — `structured` when the
@@ -95,7 +95,9 @@ an escaped string), otherwise `text` (flattened text content). Each piece of dat
 that only repeats the structured content is dropped. On failure the `arguments` actually sent are
 echoed too. Anything that goes wrong is returned as
 `{ "error": ..., "availableCapabilities": [...] }` rather than thrown, so the agent always receives
-parseable JSON.
+parseable JSON. A failed `route` also carries `inputSchema` (the tool exists — fix the arguments) or
+`availableTools` (the tool name is unknown), so an agent that skipped `discover_tools` can correct
+the call in one step.
 
 Every call is validated against the tool's schema before it is bound: a call with missing,
 unknown, or wrongly-typed parameters returns an error naming the exact problem and the expected

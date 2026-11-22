@@ -17,6 +17,15 @@ public interface IDownstreamConnectionManager
     Task<IReadOnlyList<McpClientTool>> ListToolsAsync(string capability, CancellationToken cancellationToken);
 
     /// <summary>
+    /// Lists a capability's tools for the orchestrator's own use, without recording a
+    /// <c>discover_tools</c> event in the session trace: the manifest does not reach the agent's
+    /// context (e.g. <c>route</c>'s failure hint relays only tool names or one schema).
+    /// </summary>
+    /// <exception cref="CapabilityNotFoundException">No enabled capability has that name.</exception>
+    Task<IReadOnlyList<McpClientTool>> ListToolsUntracedAsync(string capability, CancellationToken cancellationToken) =>
+        ListToolsAsync(capability, cancellationToken);
+
+    /// <summary>
     /// Invokes a tool on a downstream capability and returns its raw result (connecting
     /// to the capability if needed).
     /// </summary>
