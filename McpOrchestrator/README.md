@@ -140,7 +140,9 @@ return { errorCount: errs.length, orders };
 
 `execute` returns `{ "result": <value>, "routeCalls": n }`, or `{ "error": "...", "routeCalls": n }`.
 `route(...)` returns the tool's data as parsed JSON (or a string) and throws on failure (the full
-response is on `error.details`). Calls run one after another, even under `Promise.all`.
+response is on `error.details`). A route failure the script does not catch is returned with those
+details as `details` (stderr, `inputSchema` or `availableTools`), so the next attempt can be fixed
+directly. Calls run one after another, even under `Promise.all`.
 
 Sandbox: [Jint](https://github.com/sebastienros/jint) (a JavaScript interpreter written in C#) in
 strict mode with **no CLR, file, network or module access** — the only host function is the route

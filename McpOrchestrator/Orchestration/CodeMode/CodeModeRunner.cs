@@ -78,24 +78,31 @@ internal static class CodeModeRunner
         deadline.CancelAfter(limits.Timeout);
 
         var calls = 0;
+        var timeLimit = $"Script exceeded the {limits.Timeout.TotalSeconds:0} s time limit.";
+
+        // The deadline fired and the caller did not cancel: whatever surfaced (a cancelled route
+        // call, an interrupted regex, Jint's own timeout) is the time limit.
+        bool TimedOut() => deadline.IsCancellationRequested && !cancellationToken.IsCancellationRequested;
+
         try
         {
             // The interpreter is synchronous; keep it (and the blocking route bridge) off the caller's thread.
-            var json = await Task.Run(() => Evaluate(code, route, limits, deadline.Token, () => ++calls), deadline.Token);
-            using var doc = JsonDocument.Parse(json);
+            var outcome = await Task.Run(() => Evaluate(code, route, limits, deadline.Token, () => ++calls), deadline.Token);
+            if (outcome.Error is not null)
+            {
+                return TimedOut() ? Failure(timeLimit, calls) : Failure(outcome.Error, calls, outcome.DetailsJson);
+            }
+
+            using var doc = JsonDocument.Parse(outcome.ResultJson!);
             return OrchestratorJson.Serialize(new ExecuteView(doc.RootElement.Clone(), Error: null, calls));
         }
-        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        catch (Exception) when (TimedOut())
         {
-            return Failure($"Script exceeded the {limits.Timeout.TotalSeconds:0} s time limit.", calls);
-        }
-        catch (ExecutionCanceledException) when (!cancellationToken.IsCancellationRequested)
-        {
-            return Failure($"Script exceeded the {limits.Timeout.TotalSeconds:0} s time limit.", calls);
+            return Failure(timeLimit, calls);
         }
         catch (TimeoutException)
         {
-            return Failure($"Script exceeded the {limits.Timeout.TotalSeconds:0} s time limit.", calls);
+            return Failure(timeLimit, calls);
         }
         catch (StatementsCountOverflowException)
         {
@@ -109,10 +116,6 @@ internal static class CodeModeRunner
         {
             return Failure("Script exceeded the recursion limit.", calls);
         }
-        catch (PromiseRejectedException ex)
-        {
-            return Failure($"Uncaught error: {Describe(ex.RejectedValue)}", calls);
-        }
         catch (JavaScriptException ex)
         {
             return Failure($"Uncaught error: {ex.Message}", calls);
@@ -124,12 +127,18 @@ internal static class CodeModeRunner
         }
     }
 
-    private static string Evaluate(
+    /// <summary>What a run produced: the return value as JSON, or an uncaught error with its details.</summary>
+    private sealed record Outcome(string? ResultJson, string? Error = null, string? DetailsJson = null);
+
+    private static Outcome Evaluate(
         string code, RouteInvoker route, CodeModeLimits limits, CancellationToken token, Func<int> countCall)
     {
         var engine = new Engine(options => options
             .Strict()
             .TimeoutInterval(limits.Timeout)
+            // A .NET regex cannot be interrupted between statements; without this a catastrophic
+            // pattern runs for Jint's default 10 s regardless of the script's time limit.
+            .RegexTimeoutInterval(limits.Timeout)
             .MaxStatements(limits.MaxStatements)
             .LimitMemory(limits.MemoryBytes)
             .LimitRecursion(64)
@@ -153,10 +162,25 @@ internal static class CodeModeRunner
 
         engine.Execute(Prelude);
 
-        var value = engine.Evaluate("(async () => {\n" + code + "\n})()").UnwrapIfPromise();
+        JsValue value;
+        try
+        {
+            value = engine.Evaluate("(async () => {\n" + code + "\n})()").UnwrapIfPromise();
+        }
+        catch (PromiseRejectedException ex)
+        {
+            // Serialize the error's details while the engine is alive: for a failed route they carry
+            // the full response (stderr, inputSchema, availableTools) the model needs to fix the call.
+            engine.SetValue("__error", ex.RejectedValue);
+            var details = engine.Evaluate(
+                "(() => { try { return (__error !== null && typeof __error === 'object' && __error.details !== undefined) " +
+                "? JSON.stringify(__error.details) : undefined; } catch (_) { return undefined; } })()");
+            return new Outcome(null, $"Uncaught error: {Describe(ex.RejectedValue)}", details.IsString() ? details.AsString() : null);
+        }
+
         engine.SetValue("__value", value);
         var json = engine.Evaluate("JSON.stringify(__value === undefined ? null : __value)");
-        return json.IsString() ? json.AsString() : "null";
+        return new Outcome(json.IsString() ? json.AsString() : "null");
     }
 
     private static string Describe(JsValue value) =>
@@ -164,6 +188,14 @@ internal static class CodeModeRunner
             ? message.AsString()
             : value.ToString();
 
-    private static string Failure(string message, int calls) =>
-        OrchestratorJson.Serialize(new ExecuteView(Result: null, message, calls));
+    private static string Failure(string message, int calls, string? detailsJson = null)
+    {
+        JsonElement? details = null;
+        if (detailsJson is not null)
+        {
+            using var doc = JsonDocument.Parse(detailsJson);
+            details = doc.RootElement.Clone();
+        }
+        return OrchestratorJson.Serialize(new ExecuteView(Result: null, message, calls, details));
+    }
 }

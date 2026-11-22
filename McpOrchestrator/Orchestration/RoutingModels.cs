@@ -105,6 +105,8 @@ public sealed record ErrorView(
 
 /// <summary>
 /// The result of code mode's <c>execute</c>: the snippet's return value as JSON, or the error that
-/// stopped it, plus how many downstream calls it made.
+/// stopped it, plus how many downstream calls it made. <see cref="Details"/> carries an uncaught
+/// error's <c>details</c> — for a failed <c>route</c>, its full response (stderr, inputSchema,
+/// availableTools), so the model can fix the call without another discovery step.
 /// </summary>
-public sealed record ExecuteView(JsonElement? Result, string? Error, int RouteCalls);
+public sealed record ExecuteView(JsonElement? Result, string? Error, int RouteCalls, JsonElement? Details = null);

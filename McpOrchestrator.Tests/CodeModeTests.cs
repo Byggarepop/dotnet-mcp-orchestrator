@@ -20,10 +20,18 @@ public sealed class CodeModeTests
     {
         public List<(string Capability, string Tool, string Args)> Calls { get; } = new();
 
-        public Task<string> Invoke(string capability, string tool, JsonElement args, CancellationToken ct)
+        public async Task<string> Invoke(string capability, string tool, JsonElement args, CancellationToken ct)
         {
             Calls.Add((capability, tool, args.GetRawText()));
-            return Task.FromResult(tool switch
+            if (tool == "slow")
+            {
+                // Like OrchestratorTool.Route: a cancelled call comes back as an error response.
+                try { await Task.Delay(Timeout.Infinite, ct); }
+                catch (OperationCanceledException) { }
+                return """{"error":"Downstream capability 'c' tool 'slow' failed: A task was canceled."}""";
+            }
+
+            return tool switch
             {
                 "rows" => OrchestratorJson.Serialize(new RouteView
                 {
@@ -34,8 +42,9 @@ public sealed class CodeModeTests
                 "wrapped" => """{"capability":"c","tool":"wrapped","isError":false,"structured":{"result":[1,2,3]}}""",
                 "plain" => """{"capability":"c","tool":"plain","isError":false,"text":"public sealed class Customer { }"}""",
                 "fail" => """{"capability":"c","tool":"fail","isError":true,"text":"Downstream capability 'c' tool 'fail' failed: boom"}""",
+                "unknown" => """{"error":"Downstream capability 'c' tool 'unknown' failed: Unknown tool: 'unknown'","availableTools":["rows","wrapped"]}""",
                 _ => """{"error":"Unknown capability","availableCapabilities":["c"]}""",
-            });
+            };
         }
     }
 
@@ -106,6 +115,45 @@ public sealed class CodeModeTests
 
         Assert.Contains("Unknown capability", root.GetProperty("error").GetString());
         Assert.False(root.TryGetProperty("result", out _));
+    }
+
+    [Fact]
+    public async Task An_uncaught_route_failure_keeps_the_route_details()
+    {
+        var root = await Run("return await route('c', 'unknown', {});", new FakeRoutes());
+
+        Assert.Contains("Unknown tool", root.GetProperty("error").GetString());
+        var tools = root.GetProperty("details").GetProperty("availableTools").EnumerateArray().Select(t => t.GetString());
+        Assert.Equal(["rows", "wrapped"], tools);
+    }
+
+    [Fact]
+    public async Task An_uncaught_script_error_has_no_details()
+    {
+        var root = await Run("null.x;", new FakeRoutes());
+
+        Assert.StartsWith("Uncaught error", root.GetProperty("error").GetString());
+        Assert.False(root.TryGetProperty("details", out _));
+    }
+
+    [Fact]
+    public async Task A_route_cut_off_by_the_time_limit_reports_the_time_limit()
+    {
+        var root = await Run("return await route('c', 'slow', {});", new FakeRoutes(),
+            Fast with { Timeout = TimeSpan.FromMilliseconds(500) });
+
+        Assert.Contains("time limit", root.GetProperty("error").GetString());
+    }
+
+    [Fact]
+    public async Task A_catastrophic_regex_is_stopped_by_the_time_limit()
+    {
+        var watch = System.Diagnostics.Stopwatch.StartNew();
+        var root = await Run("return /(a+)+$/.test('a'.repeat(32) + 'b');", new FakeRoutes(),
+            Fast with { Timeout = TimeSpan.FromSeconds(1) });
+
+        Assert.Contains("time limit", root.GetProperty("error").GetString());
+        Assert.True(watch.Elapsed < TimeSpan.FromSeconds(5), $"took {watch.Elapsed}");
     }
 
     [Fact]
