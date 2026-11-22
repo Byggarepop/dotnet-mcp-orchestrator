@@ -7,6 +7,40 @@ All notable changes to this project are documented here. The format is based on
 The release workflow reads the section matching the tag (e.g. `## [0.1.0]` for tag `v0.1.0`) and
 uses it as the GitHub Release notes — so keep an entry per released version.
 
+## [Unreleased]
+
+## [0.8.0] - 2026-11-22
+
+### Added
+- Experimental code mode, opt-in with `MCP_ORCHESTRATOR_CODE_MODE=1`: an `execute` tool runs a short
+  JavaScript snippet that calls `await route(capability, tool, args)` and returns only its final
+  value. A chain of calls and the filtering between them cost one round trip, and intermediate
+  results never enter the model's context (150 rows → 3 errors + details: 160 tokens instead of
+  6,363). The sandbox (Jint) has no CLR, file, network or module access; limits per run are 30 s,
+  50 route calls, 64 MB, 10M statements and recursion depth 64. An uncaught route failure returns
+  the route's response as `details`. A script can call every configured capability and tool, the
+  same reach as `route`, and one host approval covers all its calls. Unset, the tool is not
+  registered and costs nothing.
+- A failed `route` now carries `availableTools` (the tool name is unknown) or `inputSchema` (the
+  tool exists; fix the arguments), so an agent that skipped `discover_tools` can correct the call
+  in one step. The tool descriptions say to call `route` directly when a capability's
+  instructions already name the tool and its arguments.
+
+### Changed
+- **Response shape of `route`:** a JSON object or array result is returned as JSON in `structured`
+  instead of as an escaped string in `text`, and text that only repeats the structured content
+  (including a wrapper such as the filesystem server's `{"content": "<text>"}`) is dropped. The
+  sent `arguments` are echoed only when the call failed. A client that parses `route`'s JSON and
+  reads only `text` must also read `structured`.
+- Model-facing JSON uses relaxed escaping: quotes, apostrophes, `<`, `>`, `&` and non-ASCII text
+  such as å/ä/ö are written as-is instead of as `\uXXXX`. The output is still valid JSON. A
+  150-row relayed result went from 17,125 to 6,475 tokens; Swedish text costs about 30% fewer.
+- The `stderr` of a failed `route` keeps only what explains the failure: stack-frame lines,
+  routine `info`/`dbug`/`trce` log entries and repeated lines are dropped, and a closing line
+  says how many were left out (an unknown-tool error: 781 → 165 tokens).
+- The orchestrator's tool definitions are about 67 tokens longer (570 → 637) for the new
+  `route`-first guidance.
+
 ## [0.7.6] - 2026-10-20
 
 ### Fixed
