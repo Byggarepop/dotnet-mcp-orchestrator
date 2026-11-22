@@ -104,4 +104,86 @@ internal static class ToolPayloads
         }
         return sb.ToString();
     }
+
+    /// <summary>
+    /// Sends each piece of result data to the model once, in its cheapest form:
+    /// <list type="bullet">
+    /// <item>Structured content present and the text is JSON equal to it → the text is the
+    /// serialized copy of the same data (the MCP compatibility fallback); keep only
+    /// <c>structured</c>. JSON text that differs from the structured content is kept.</item>
+    /// <item>Structured content holds the text verbatim (the structured content is that string,
+    /// or one of its top-level properties is, e.g. <c>{"content": "&lt;text&gt;"}</c> from the
+    /// filesystem server) → keep only <c>structured</c>; the text would be sent twice.</item>
+    /// <item>No structured content but the text is a JSON object or array → embed it as JSON in
+    /// <c>structured</c>. As a string, every quote inside it would be escaped again.</item>
+    /// <item>Anything else (plain text, several text blocks, text beside structured data) is kept
+    /// as is.</item>
+    /// </list>
+    /// </summary>
+    public static (string? Text, JsonElement? Structured) Compact(string text, JsonElement? structured)
+    {
+        var parsed = TryParseJsonContainer(text);
+        if (structured is not null)
+        {
+            // Drop the text only when the structured content already carries it; text that
+            // differs is kept.
+            var duplicate = parsed is { } p
+                ? JsonElement.DeepEquals(p, structured.Value)
+                : HoldsTextVerbatim(structured.Value, text);
+            return duplicate ? (null, structured) : (NullIfEmpty(text), structured);
+        }
+
+        return parsed is null ? (NullIfEmpty(text), null) : (null, parsed);
+    }
+
+    /// <summary>
+    /// True when <paramref name="structured"/> is the string <paramref name="text"/>, or an object
+    /// with a top-level string property equal to it.
+    /// </summary>
+    private static bool HoldsTextVerbatim(JsonElement structured, string text)
+    {
+        if (text.Length == 0)
+        {
+            return false;
+        }
+
+        switch (structured.ValueKind)
+        {
+            case JsonValueKind.String:
+                return structured.ValueEquals(text);
+            case JsonValueKind.Object:
+                foreach (var property in structured.EnumerateObject())
+                {
+                    if (property.Value.ValueKind == JsonValueKind.String && property.Value.ValueEquals(text))
+                    {
+                        return true;
+                    }
+                }
+                return false;
+            default:
+                return false;
+        }
+    }
+
+    private static string? NullIfEmpty(string text) => text.Length == 0 ? null : text;
+
+    /// <summary>The text parsed as JSON when it is exactly one JSON object or array; otherwise null.</summary>
+    private static JsonElement? TryParseJsonContainer(string text)
+    {
+        var trimmed = text.AsSpan().TrimStart();
+        if (trimmed.IsEmpty || (trimmed[0] != '{' && trimmed[0] != '['))
+        {
+            return null;
+        }
+
+        try
+        {
+            using var doc = JsonDocument.Parse(text);
+            return doc.RootElement.Clone();
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
+    }
 }

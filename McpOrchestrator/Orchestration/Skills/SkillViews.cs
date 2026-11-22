@@ -8,7 +8,15 @@ internal static class SkillJson
 {
     /// <summary>Source-generated serialization (Native-AOT safe); mirrors <see cref="OrchestratorJson"/>.</summary>
     internal static string Serialize<T>(T value) =>
-        JsonSerializer.Serialize(value, typeof(T), SkillViewsJsonContext.Default);
+        JsonSerializer.Serialize(value, typeof(T), Context);
+
+    /// <summary>Same rules as the attribute on <see cref="SkillViewsJsonContext"/>, with the model-facing encoder.</summary>
+    private static readonly SkillViewsJsonContext Context = new(new JsonSerializerOptions
+    {
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
+        Encoder = OrchestratorJson.ModelFacingEncoder,
+    });
 }
 
 /// <summary>

@@ -75,8 +75,10 @@ public sealed class OrchestratorToolTests
             conn, catalog, Log, "jira", "get_issue", Obj("""{ "issueKey": "PROJ-1" }"""), CancellationToken.None));
 
         Assert.False(root.GetProperty("isError").GetBoolean());
-        Assert.Contains("In Progress", root.GetProperty("text").GetString());
-        Assert.Equal("PROJ-1", root.GetProperty("arguments").GetProperty("issueKey").GetString());
+        // JSON text is embedded as JSON, sent once, and the arguments are not echoed on success.
+        Assert.Equal("In Progress", root.GetProperty("structured").GetProperty("status").GetString());
+        Assert.False(root.TryGetProperty("text", out _));
+        Assert.False(root.TryGetProperty("arguments", out _));
     }
 
     [Fact]
@@ -91,7 +93,7 @@ public sealed class OrchestratorToolTests
             conn, catalog, Log, "jira", "get_issue", stringified, CancellationToken.None));
 
         Assert.False(root.GetProperty("isError").GetBoolean());
-        Assert.Contains("PROJ-2", root.GetProperty("text").GetString());
+        Assert.Equal("PROJ-2", root.GetProperty("structured").GetProperty("key").GetString());
     }
 
     [Fact]
