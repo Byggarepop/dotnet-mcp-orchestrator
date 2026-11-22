@@ -109,6 +109,8 @@ attributed as `Downstream capability '<name>' tool '<tool>' failed: ...`, togeth
 Servers built on the MCP C# SDK genericize unhandled tool exceptions on the wire ("An error
 occurred invoking '<tool>'.") and log the real cause only to stderr — relaying it is the only way
 the calling agent, which cannot read the host's logs, can see the actual problem and self-correct.
+Only the explanatory part is relayed: stack-frame lines, routine `info`/`dbug`/`trce` log entries
+and repeated lines are dropped, and a closing line says how many were left out.
 
 The catalog is not only pull-based: the initialize handshake's **server instructions** carry
 every capability's name + summary (and, for capabilities marked `"promote": true`, their full
