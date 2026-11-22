@@ -40,8 +40,9 @@ public sealed record DiscoverView(string Capability, IReadOnlyList<ToolView> Too
 
 /// <summary>
 /// The result of <c>route</c>: which downstream tool ran and what it returned. <see cref="Text"/>
-/// is the flattened text content; <see cref="Structured"/> carries any structured JSON the tool
-/// produced.
+/// is the flattened text content; <see cref="Structured"/> carries the result's JSON — the tool's
+/// structured content, or its text when that text is a JSON object or array. Each piece of data is
+/// sent once (see <see cref="ToolPayloads.Compact"/>).
 /// </summary>
 public sealed record RouteView
 {
@@ -51,7 +52,7 @@ public sealed record RouteView
     public string? Text { get; init; }
     public JsonElement? Structured { get; init; }
 
-    /// <summary>The arguments actually sent downstream (echoed back so the call is auditable).</summary>
+    /// <summary>The arguments actually sent downstream — echoed only when the call failed.</summary>
     public JsonNode? Arguments { get; init; }
 
     /// <summary>

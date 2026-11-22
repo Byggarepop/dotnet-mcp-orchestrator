@@ -77,4 +77,57 @@ public sealed class ToolPayloadsTests
         var result = new CallToolResult { Content = new List<ContentBlock>() };
         Assert.Equal(string.Empty, ToolPayloads.FlattenText(result));
     }
+
+    // ----- Compact -----
+
+    [Fact]
+    public void Compact_drops_text_that_repeats_structured_content()
+    {
+        var (text, structured) = ToolPayloads.Compact("""{"key":"PROJ-1"}""", Json("""{"key":"PROJ-1"}"""));
+
+        Assert.Null(text);
+        Assert.Equal("PROJ-1", structured!.Value.GetProperty("key").GetString());
+    }
+
+    [Fact]
+    public void Compact_keeps_plain_text_beside_structured_content()
+    {
+        var (text, structured) = ToolPayloads.Compact("Found 1 issue.", Json("""{"key":"PROJ-1"}"""));
+
+        Assert.Equal("Found 1 issue.", text);
+        Assert.NotNull(structured);
+    }
+
+    [Theory]
+    [InlineData("""{"key":"PROJ-1"}""", JsonValueKind.Object)]
+    [InlineData("""  [{"id":1},{"id":2}]""", JsonValueKind.Array)]
+    public void Compact_embeds_json_text_as_json(string raw, JsonValueKind kind)
+    {
+        var (text, structured) = ToolPayloads.Compact(raw, null);
+
+        Assert.Null(text);
+        Assert.Equal(kind, structured!.Value.ValueKind);
+    }
+
+    [Theory]
+    [InlineData("public sealed class Customer { }")]
+    [InlineData("{ not json")]
+    [InlineData("{\"a\":1}\n{\"b\":2}")] // two text blocks joined by a newline
+    [InlineData("42")]                        // a bare JSON scalar stays text
+    public void Compact_keeps_non_json_text_as_text(string raw)
+    {
+        var (text, structured) = ToolPayloads.Compact(raw, null);
+
+        Assert.Equal(raw, text);
+        Assert.Null(structured);
+    }
+
+    [Fact]
+    public void Compact_turns_empty_text_into_no_text()
+    {
+        var (text, structured) = ToolPayloads.Compact(string.Empty, null);
+
+        Assert.Null(text);
+        Assert.Null(structured);
+    }
 }
