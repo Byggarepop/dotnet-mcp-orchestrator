@@ -27,6 +27,7 @@ public static class OrchestratorJson
 [JsonSerializable(typeof(DiscoverView))]
 [JsonSerializable(typeof(RouteView))]
 [JsonSerializable(typeof(ErrorView))]
+[JsonSerializable(typeof(ExecuteView))]
 internal sealed partial class OrchestratorJsonContext : JsonSerializerContext;
 
 /// <summary>One capability as advertised to the model by <c>list_capabilities</c>.</summary>
@@ -70,3 +71,9 @@ public sealed record ErrorView(
     string Error,
     IReadOnlyList<string>? AvailableCapabilities = null,
     IReadOnlyList<string>? Stderr = null);
+
+/// <summary>
+/// The result of code mode's <c>execute</c>: the snippet's return value as JSON, or the error that
+/// stopped it, plus how many downstream calls it made.
+/// </summary>
+public sealed record ExecuteView(JsonElement? Result, string? Error, int RouteCalls);

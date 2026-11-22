@@ -157,7 +157,7 @@ public static class OrchestratorHost
             builder.Services.AddSingleton<Profiling.ISessionTraceWriter>(Profiling.NullSessionTraceWriter.Instance);
         }
 
-        builder.Services
+        var mcp = builder.Services
             .AddMcpServer()
             .WithStdioServerTransport()
             // Register the meta-tools via the generic overload (source-generated, Native-AOT safe)
@@ -171,6 +171,13 @@ public static class OrchestratorHost
             .WithRequestFilters(filters => filters.AddCallToolFilter(ToolCallValidationFilter.Attach))
             .WithListResourcesHandler(Orchestration.Skills.SkillResourceHandlers.ListAsync)
             .WithReadResourceHandler(Orchestration.Skills.SkillResourceHandlers.ReadAsync);
+
+        // Experimental code mode: the `execute` tool exists only when switched on, so it costs no
+        // context for anyone who has not opted in.
+        if (Tools.CodeModeTool.IsEnabled())
+        {
+            mcp.WithTools<Tools.CodeModeTool>();
+        }
 
         var app = builder.Build();
 

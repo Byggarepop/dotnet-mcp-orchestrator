@@ -118,6 +118,33 @@ There is deliberately **no "describe it in English" tool**: turning a sentence i
 interpretation, and that's the agent's job (it already has the schemas from `discover_tools`). The
 orchestrator stays a pure relay.
 
+### Code mode (`execute`, experimental, opt-in)
+
+Set `MCP_ORCHESTRATOR_CODE_MODE=1` in the orchestrator's environment to add a fourth tool,
+`execute`. The agent writes a short JavaScript snippet that calls `route` as a function; the chain
+of calls and the filtering between them run inside the orchestrator, and only the snippet's return
+value reaches the model — one round trip instead of one per call:
+
+```javascript
+const rows = await route('db', 'db_execute_query', { sql: 'SELECT * FROM Orders' });
+const errs = rows.filter(r => r.Status === 'ERR');
+const orders = await Promise.all(errs.map(r => route('jira', 'search_issues', { query: r.OrderId })));
+return { errorCount: errs.length, orders };
+```
+
+`execute` returns `{ "result": <value>, "routeCalls": n }`, or `{ "error": "...", "routeCalls": n }`.
+`route(...)` returns the tool's data as parsed JSON (or a string) and throws on failure (the full
+response is on `error.details`). Calls run one after another, even under `Promise.all`.
+
+Sandbox: [Jint](https://github.com/sebastienros/jint) (a JavaScript interpreter written in C#) in
+strict mode with **no CLR, file, network or module access** — the only host function is the route
+bridge, and every call still goes through the normal `route` path. Limits per run: 30 s, 50 route
+calls, 64 MB, 10M statements, recursion depth 64.
+
+It pays off for chains and large results, not single calls — measured with the round-trip
+benchmark (`dotnet test --filter Category=Benchmark`). When the variable is unset, `execute` is
+not registered and adds nothing to the context.
+
 ---
 
 ## Token scaling
