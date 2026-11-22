@@ -98,6 +98,24 @@ public sealed class ToolPayloadsTests
         Assert.NotNull(structured);
     }
 
+    [Fact]
+    public void Compact_keeps_json_text_that_differs_from_structured_content()
+    {
+        const string rows = """[{"id":1},{"id":2},{"id":3}]""";
+        var (text, structured) = ToolPayloads.Compact(rows, Json("""{"count":3}"""));
+
+        Assert.Equal(rows, text);
+        Assert.Equal(3, structured!.Value.GetProperty("count").GetInt32());
+    }
+
+    [Fact]
+    public void Compact_treats_reformatted_copy_of_structured_content_as_duplicate()
+    {
+        var (text, _) = ToolPayloads.Compact("{ \"key\" : \"PROJ-1\" }", Json("""{"key":"PROJ-1"}"""));
+
+        Assert.Null(text);
+    }
+
     [Theory]
     [InlineData("""{"key":"PROJ-1"}""", JsonValueKind.Object)]
     [InlineData("""  [{"id":1},{"id":2}]""", JsonValueKind.Array)]

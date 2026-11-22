@@ -108,8 +108,9 @@ internal static class ToolPayloads
     /// <summary>
     /// Sends each piece of result data to the model once, in its cheapest form:
     /// <list type="bullet">
-    /// <item>Structured content present and the text is JSON → the text is the serialized copy of
-    /// the same data (the MCP compatibility fallback); keep only <c>structured</c>.</item>
+    /// <item>Structured content present and the text is JSON equal to it → the text is the
+    /// serialized copy of the same data (the MCP compatibility fallback); keep only
+    /// <c>structured</c>. JSON text that differs from the structured content is kept.</item>
     /// <item>No structured content but the text is a JSON object or array → embed it as JSON in
     /// <c>structured</c>. As a string, every quote inside it would be escaped again.</item>
     /// <item>Anything else (plain text, several text blocks, text beside structured data) is kept
@@ -121,7 +122,10 @@ internal static class ToolPayloads
         var parsed = TryParseJsonContainer(text);
         if (structured is not null)
         {
-            return parsed is null ? (NullIfEmpty(text), structured) : (null, structured);
+            // Drop the text only when it is the same data; JSON text that differs is kept.
+            return parsed is { } p && JsonElement.DeepEquals(p, structured.Value)
+                ? (null, structured)
+                : (NullIfEmpty(text), structured);
         }
 
         return parsed is null ? (NullIfEmpty(text), null) : (null, parsed);
