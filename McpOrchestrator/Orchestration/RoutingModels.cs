@@ -60,13 +60,22 @@ public sealed record RouteView
     /// "An error occurred invoking …" result) where the calling model cannot otherwise see it.
     /// </summary>
     public IReadOnlyList<string>? Stderr { get; init; }
+
+    /// <summary>On failure, when the tool name is unknown: the capability's valid tool names.</summary>
+    public IReadOnlyList<string>? AvailableTools { get; init; }
+
+    /// <summary>On failure, when the tool exists: its input schema, so the call can be corrected.</summary>
+    public JsonElement? InputSchema { get; init; }
 }
 
 /// <summary>
 /// A structured error returned to the model instead of throwing. <see cref="Stderr"/> carries any
-/// stderr the downstream process wrote while the failing call ran (see <see cref="RouteView.Stderr"/>).
+/// stderr the downstream process wrote while the failing call ran (see <see cref="RouteView.Stderr"/>);
+/// <see cref="AvailableTools"/> / <see cref="InputSchema"/> help the model correct a failed route.
 /// </summary>
 public sealed record ErrorView(
     string Error,
     IReadOnlyList<string>? AvailableCapabilities = null,
-    IReadOnlyList<string>? Stderr = null);
+    IReadOnlyList<string>? Stderr = null,
+    IReadOnlyList<string>? AvailableTools = null,
+    JsonElement? InputSchema = null);

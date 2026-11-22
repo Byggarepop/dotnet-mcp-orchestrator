@@ -123,4 +123,52 @@ public sealed class OrchestratorToolTests
             || root.TryGetProperty("error", out _);
         Assert.True(surfaced);
     }
+
+    // ----- route without discover_tools -----
+
+    [Fact]
+    public async Task Route_works_without_a_prior_discover_tools()
+    {
+        var (catalog, conn) = Demo.StandardPair();
+        await using var owned = conn;
+
+        // Fresh connection manager: nothing has listed jira's tools yet.
+        var root = Parse(await OrchestratorTool.Route(
+            conn, catalog, Log, "jira", "get_issue", Obj("""{ "issueKey": "PROJ-3" }"""), CancellationToken.None));
+
+        Assert.False(root.GetProperty("isError").GetBoolean());
+        Assert.False(root.TryGetProperty("availableTools", out _));
+        Assert.False(root.TryGetProperty("inputSchema", out _));
+    }
+
+    [Fact]
+    public async Task Route_to_unknown_tool_returns_the_valid_tool_names()
+    {
+        var (catalog, conn) = Demo.StandardPair();
+        await using var owned = conn;
+
+        var root = Parse(await OrchestratorTool.Route(
+            conn, catalog, Log, "jira", "get_ticket", Obj("""{ "issueKey": "PROJ-1" }"""), CancellationToken.None));
+
+        var names = root.GetProperty("availableTools").EnumerateArray().Select(t => t.GetString()).ToList();
+        Assert.Contains("get_issue", names);
+        Assert.Contains("search_issues", names);
+        Assert.False(root.TryGetProperty("inputSchema", out _));
+    }
+
+    [Fact]
+    public async Task Route_with_wrong_arguments_returns_the_tool_schema()
+    {
+        var (catalog, conn) = Demo.StandardPair();
+        await using var owned = conn;
+
+        // 'key' instead of 'issueKey' — the downstream rejects the call.
+        var root = Parse(await OrchestratorTool.Route(
+            conn, catalog, Log, "jira", "get_issue", Obj("""{ "key": "PROJ-1" }"""), CancellationToken.None));
+
+        var failed = (root.TryGetProperty("isError", out var e) && e.GetBoolean()) || root.TryGetProperty("error", out _);
+        Assert.True(failed);
+        Assert.True(root.GetProperty("inputSchema").GetProperty("properties").TryGetProperty("issueKey", out _));
+        Assert.False(root.TryGetProperty("availableTools", out _));
+    }
 }

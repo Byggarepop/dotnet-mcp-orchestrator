@@ -25,9 +25,10 @@ public sealed class OrchestratorTool
         "List the downstream MCP capabilities this orchestrator can reach (e.g. 'jira', " +
         "'codegen', 'db'). Call this FIRST to find out what is available. Each entry has a " +
         "name, a summary of what it does, and instructions telling you exactly what to pass. " +
-        "The reliable path is: read the instructions here, call 'discover_tools' to see a " +
-        "capability's tools and their schemas, then call 'route' with the exact tool and " +
-        "arguments. Follow each capability's instructions literally (e.g. 'always include the " +
+        "If the instructions already name the tool and its arguments, call 'route' directly — " +
+        "skip 'discover_tools'. Otherwise call 'discover_tools' to see the capability's tools and " +
+        "schemas, then 'route'. A failed 'route' returns the tool's schema (or the valid tool " +
+        "names), so you can correct the call without a separate discovery step. Follow each capability's instructions literally (e.g. 'always include the " +
         "Jira issue key') — the orchestrator forwards what you send verbatim and does not " +
         "interpret it.")]
     public static Task<string> ListCapabilities(
@@ -51,9 +52,8 @@ public sealed class OrchestratorTool
     [McpServerTool(Name = "discover_tools")]
     [Description(
         "Connect to one downstream capability and list its concrete tools, each with its " +
-        "name, description, and JSON input schema. Use this after 'list_capabilities' to " +
-        "learn exactly what a capability can do and which arguments each tool needs, before " +
-        "calling 'route'.")]
+        "name, description, and JSON input schema. Use this when the capability's instructions " +
+        "from 'list_capabilities' do not already tell you which tool to call and what to pass.")]
     public static async Task<string> DiscoverTools(
         IDownstreamConnectionManager connections,
         ICapabilityCatalog catalog,
@@ -86,7 +86,8 @@ public sealed class OrchestratorTool
     [McpServerTool(Name = "route")]
     [Description(
         "Forward a tool call to a downstream capability and return its result. You choose the " +
-        "capability and the exact tool name (from 'discover_tools') and pass an 'arguments' " +
+        "capability and the exact tool name (from the capability's instructions or " +
+        "'discover_tools') and pass an 'arguments' " +
         "object matching that tool's input schema — you do the interpreting, the orchestrator " +
         "just couriers the call verbatim and relays the response. Honor the capability's " +
         "instructions when filling arguments (e.g. always include the Jira issue key).")]
@@ -118,11 +119,14 @@ public sealed class OrchestratorTool
                 // MCP C# SDK's binding layer included — genericize the message on the wire
                 // ("An error occurred invoking '<tool>'.") and log the real exception only to
                 // stderr, so attribute the text and attach the stderr captured during the call.
+                var hint = await ToolHintAsync(connections, capability, tool);
                 view = view with
                 {
                     Text = $"Downstream capability '{capability}' tool '{tool}' failed: " +
                         (string.IsNullOrEmpty(view.Text) ? "(no error text from downstream)" : view.Text),
                     Stderr = await CaptureStderrAsync(connections, capability, stderrMark),
+                    AvailableTools = hint.AvailableTools,
+                    InputSchema = hint.InputSchema,
                 };
             }
 
@@ -140,9 +144,13 @@ public sealed class OrchestratorTool
             // Anything thrown around the call — a protocol-level fault from the proxied server
             // (McpException), a timeout, a connect failure — is relayed with its actual message,
             // attributed to the capability/tool that produced it, never a generic wrapper.
+            var stderr = await CaptureStderrAsync(connections, capability, stderrMark);
+            var hint = await ToolHintAsync(connections, capability, tool);
             return OrchestratorJson.Serialize(new ErrorView(
                 $"Downstream capability '{capability}' tool '{tool}' failed: {ex.Message}",
-                Stderr: await CaptureStderrAsync(connections, capability, stderrMark)));
+                Stderr: stderr,
+                AvailableTools: hint.AvailableTools,
+                InputSchema: hint.InputSchema));
         }
     }
 
@@ -162,6 +170,30 @@ public sealed class OrchestratorTool
         Structured = result.StructuredContent,
         Arguments = ToolPayloads.ArgumentsToNode(args),
     };
+
+    /// <summary>
+    /// What a model needs to fix a failed call in one more step, so it can call <c>route</c>
+    /// without a prior <c>discover_tools</c>: the tool's input schema when the tool exists, or the
+    /// capability's valid tool names when it does not. Failure paths only. Best effort — bounded
+    /// to a few seconds, and any error yields no hint rather than masking the original failure.
+    /// </summary>
+    private static async Task<(IReadOnlyList<string>? AvailableTools, JsonElement? InputSchema)> ToolHintAsync(
+        IDownstreamConnectionManager connections, string capability, string tool)
+    {
+        try
+        {
+            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+            var tools = await connections.ListToolsAsync(capability, timeout.Token);
+            var match = tools.FirstOrDefault(t => string.Equals(t.Name, tool, StringComparison.Ordinal));
+            return match is null
+                ? (tools.Select(t => t.Name).ToList(), null)
+                : (null, match.ProtocolTool.InputSchema);
+        }
+        catch (Exception)
+        {
+            return (null, null);
+        }
+    }
 
     /// <summary>
     /// Collects the stderr a capability's process wrote since the given mark, for inclusion in a
