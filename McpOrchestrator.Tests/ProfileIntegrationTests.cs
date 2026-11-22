@@ -148,6 +148,25 @@ public sealed class ProfileIntegrationTests
     }
 
     [Fact]
+    public async Task Route_failure_hint_records_no_discover_tools_event()
+    {
+        // The hint lists tools to return valid names, but the agent never sees the manifest, so a
+        // profile replay must not count a manifest load for it.
+        var spy = new SpyTraceWriter();
+        var catalog = Demo.Catalog(Demo.Capability("jira", "jira"));
+        await using var conn = new DownstreamConnectionManager(
+            catalog, NullLoggerFactory.Instance, new NullLogger<DownstreamConnectionManager>(), spy);
+
+        using var args = System.Text.Json.JsonDocument.Parse("""{ "issueKey": "PROJ-1" }""");
+        var json = await McpOrchestrator.Tools.OrchestratorTool.Route(
+            conn, catalog, new NullLogger<McpOrchestrator.Tools.OrchestratorTool>(),
+            "jira", "get_ticket", args.RootElement.Clone(), CancellationToken.None);
+
+        Assert.Contains("availableTools", json);
+        Assert.DoesNotContain(spy.Events, e => e.Type == "discover_tools");
+    }
+
+    [Fact]
     public async Task Profile_from_an_imported_host_config_measures_stdio_and_skips_remote()
     {
         // The exact wiring `profile --host-config` uses: parse a host config, import its stdio

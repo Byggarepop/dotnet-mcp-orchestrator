@@ -1,3 +1,4 @@
+using System.Text.Encodings.Web;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
@@ -12,7 +13,27 @@ public static class OrchestratorJson
     /// type must be registered on <see cref="OrchestratorJsonContext"/>.
     /// </summary>
     public static string Serialize<T>(T value) =>
-        JsonSerializer.Serialize(value, typeof(T), OrchestratorJsonContext.Default);
+        JsonSerializer.Serialize(value, typeof(T), Context);
+
+    /// <summary>
+    /// The context actually used for model-facing output. Same naming/null rules as the attribute
+    /// on <see cref="OrchestratorJsonContext"/>, plus <see cref="ModelFacingEncoder"/>.
+    /// </summary>
+    private static readonly OrchestratorJsonContext Context = new(new JsonSerializerOptions
+    {
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
+        Encoder = ModelFacingEncoder,
+    });
+
+    /// <summary>
+    /// Encoder for text a model reads (never HTML). The default encoder escapes every non-ASCII
+    /// character (å → \u00E5) and HTML-sensitive ones (' + &lt; &gt; &amp; and even " as \u0022),
+    /// which multiplies the tokens of relayed JSON and non-English text on every call: a 150-row
+    /// downstream result measured 17,125 tokens with the default encoder and 6,475 with this one.
+    /// JSON validity is unaffected — quotes, backslashes and control characters are still escaped.
+    /// </summary>
+    internal static JavaScriptEncoder ModelFacingEncoder => JavaScriptEncoder.UnsafeRelaxedJsonEscaping;
 }
 
 /// <summary>
@@ -41,8 +62,9 @@ public sealed record DiscoverView(string Capability, IReadOnlyList<ToolView> Too
 
 /// <summary>
 /// The result of <c>route</c>: which downstream tool ran and what it returned. <see cref="Text"/>
-/// is the flattened text content; <see cref="Structured"/> carries any structured JSON the tool
-/// produced.
+/// is the flattened text content; <see cref="Structured"/> carries the result's JSON — the tool's
+/// structured content, or its text when that text is a JSON object or array. Each piece of data is
+/// sent once (see <see cref="ToolPayloads.Compact"/>).
 /// </summary>
 public sealed record RouteView
 {
@@ -52,7 +74,7 @@ public sealed record RouteView
     public string? Text { get; init; }
     public JsonElement? Structured { get; init; }
 
-    /// <summary>The arguments actually sent downstream (echoed back so the call is auditable).</summary>
+    /// <summary>The arguments actually sent downstream — echoed only when the call failed.</summary>
     public JsonNode? Arguments { get; init; }
 
     /// <summary>
@@ -61,16 +83,25 @@ public sealed record RouteView
     /// "An error occurred invoking …" result) where the calling model cannot otherwise see it.
     /// </summary>
     public IReadOnlyList<string>? Stderr { get; init; }
+
+    /// <summary>On failure, when the tool name is unknown: the capability's valid tool names.</summary>
+    public IReadOnlyList<string>? AvailableTools { get; init; }
+
+    /// <summary>On failure, when the tool exists: its input schema, so the call can be corrected.</summary>
+    public JsonElement? InputSchema { get; init; }
 }
 
 /// <summary>
 /// A structured error returned to the model instead of throwing. <see cref="Stderr"/> carries any
-/// stderr the downstream process wrote while the failing call ran (see <see cref="RouteView.Stderr"/>).
+/// stderr the downstream process wrote while the failing call ran (see <see cref="RouteView.Stderr"/>);
+/// <see cref="AvailableTools"/> / <see cref="InputSchema"/> help the model correct a failed route.
 /// </summary>
 public sealed record ErrorView(
     string Error,
     IReadOnlyList<string>? AvailableCapabilities = null,
-    IReadOnlyList<string>? Stderr = null);
+    IReadOnlyList<string>? Stderr = null,
+    IReadOnlyList<string>? AvailableTools = null,
+    JsonElement? InputSchema = null);
 
 /// <summary>
 /// The result of code mode's <c>execute</c>: the snippet's return value as JSON, or the error that

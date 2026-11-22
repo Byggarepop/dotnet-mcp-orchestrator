@@ -75,8 +75,10 @@ public sealed class OrchestratorToolTests
             conn, catalog, Log, "jira", "get_issue", Obj("""{ "issueKey": "PROJ-1" }"""), CancellationToken.None));
 
         Assert.False(root.GetProperty("isError").GetBoolean());
-        Assert.Contains("In Progress", root.GetProperty("text").GetString());
-        Assert.Equal("PROJ-1", root.GetProperty("arguments").GetProperty("issueKey").GetString());
+        // JSON text is embedded as JSON, sent once, and the arguments are not echoed on success.
+        Assert.Equal("In Progress", root.GetProperty("structured").GetProperty("status").GetString());
+        Assert.False(root.TryGetProperty("text", out _));
+        Assert.False(root.TryGetProperty("arguments", out _));
     }
 
     [Fact]
@@ -91,7 +93,7 @@ public sealed class OrchestratorToolTests
             conn, catalog, Log, "jira", "get_issue", stringified, CancellationToken.None));
 
         Assert.False(root.GetProperty("isError").GetBoolean());
-        Assert.Contains("PROJ-2", root.GetProperty("text").GetString());
+        Assert.Equal("PROJ-2", root.GetProperty("structured").GetProperty("key").GetString());
     }
 
     [Fact]
@@ -122,5 +124,59 @@ public sealed class OrchestratorToolTests
         var surfaced = (root.TryGetProperty("isError", out var e) && e.GetBoolean())
             || root.TryGetProperty("error", out _);
         Assert.True(surfaced);
+    }
+
+    // ----- route without discover_tools -----
+
+    [Fact]
+    public async Task Route_works_without_a_prior_discover_tools()
+    {
+        var (catalog, conn) = Demo.StandardPair();
+        await using var owned = conn;
+
+        // Fresh connection manager: nothing has listed jira's tools yet.
+        var root = Parse(await OrchestratorTool.Route(
+            conn, catalog, Log, "jira", "get_issue", Obj("""{ "issueKey": "PROJ-3" }"""), CancellationToken.None));
+
+        Assert.False(root.GetProperty("isError").GetBoolean());
+        Assert.False(root.TryGetProperty("availableTools", out _));
+        Assert.False(root.TryGetProperty("inputSchema", out _));
+    }
+
+    [Fact]
+    public async Task Route_to_unknown_tool_returns_the_valid_tool_names()
+    {
+        var (catalog, conn) = Demo.StandardPair();
+        await using var owned = conn;
+
+        var root = Parse(await OrchestratorTool.Route(
+            conn, catalog, Log, "jira", "get_ticket", Obj("""{ "issueKey": "PROJ-1" }"""), CancellationToken.None));
+
+        var names = root.GetProperty("availableTools").EnumerateArray().Select(t => t.GetString()).ToList();
+        Assert.Contains("get_issue", names);
+        Assert.Contains("search_issues", names);
+        Assert.False(root.TryGetProperty("inputSchema", out _));
+    }
+
+    [Fact]
+    public async Task Route_with_wrong_arguments_returns_the_tool_schema()
+    {
+        var (catalog, conn) = Demo.StandardPair();
+        await using var owned = conn;
+
+        // 'key' instead of 'issueKey' — the downstream rejects the call.
+        var root = Parse(await OrchestratorTool.Route(
+            conn, catalog, Log, "jira", "get_issue", Obj("""{ "key": "PROJ-1" }"""), CancellationToken.None));
+
+        var failed = (root.TryGetProperty("isError", out var e) && e.GetBoolean()) || root.TryGetProperty("error", out _);
+        Assert.True(failed);
+        Assert.True(root.GetProperty("inputSchema").GetProperty("properties").TryGetProperty("issueKey", out _));
+        Assert.False(root.TryGetProperty("availableTools", out _));
+
+        // The hint's own tools/list call must not leak into the failing call's stderr.
+        if (root.TryGetProperty("stderr", out var stderr))
+        {
+            Assert.DoesNotContain(stderr.EnumerateArray(), line => line.GetString()!.Contains("tools/list"));
+        }
     }
 }

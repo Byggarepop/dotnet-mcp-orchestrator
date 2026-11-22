@@ -86,14 +86,18 @@ retries instead of awaiting a dead connection.
 | Tool | Parameters | Purpose |
 | --- | --- | --- |
 | `list_capabilities` | — | List the downstream MCPs (name, summary, instructions). Call first. |
-| `discover_tools` | `capability` | Connect to one capability and list its tools + input schemas. |
+| `discover_tools` | `capability` | Connect to one capability and list its tools + input schemas. Optional when the capability's `instructions` already name the tool and its arguments. |
 | `route` | `capability`, `tool`, `arguments` | Forward a specific tool call (you pick the tool and fill the arguments) and return its result. |
 
-`route` returns JSON: `capability`, `tool`, `isError`, `text` (flattened text content),
-`structured` (when the downstream tool returns structured content), and the `arguments` actually
-sent (echoed for auditing). Anything that goes wrong is returned as
+`route` returns JSON: `capability`, `tool`, `isError`, and the result — `structured` when the
+downstream tool returns structured content or its text is a JSON object/array (embedded as JSON, not
+an escaped string), otherwise `text` (flattened text content). Each piece of data is sent once: text
+that only repeats the structured content is dropped. On failure the `arguments` actually sent are
+echoed too. Anything that goes wrong is returned as
 `{ "error": ..., "availableCapabilities": [...] }` rather than thrown, so the agent always receives
-parseable JSON.
+parseable JSON. A failed `route` also carries `inputSchema` (the tool exists — fix the arguments) or
+`availableTools` (the tool name is unknown), so an agent that skipped `discover_tools` can correct
+the call in one step.
 
 Every call is validated against the tool's schema before it is bound: a call with missing,
 unknown, or wrongly-typed parameters returns an error naming the exact problem and the expected
@@ -107,6 +111,8 @@ attributed as `Downstream capability '<name>' tool '<tool>' failed: ...`, togeth
 Servers built on the MCP C# SDK genericize unhandled tool exceptions on the wire ("An error
 occurred invoking '<tool>'.") and log the real cause only to stderr — relaying it is the only way
 the calling agent, which cannot read the host's logs, can see the actual problem and self-correct.
+Only the explanatory part is relayed: stack-frame lines, routine `info`/`dbug`/`trce` log entries
+and repeated lines are dropped, and a closing line says how many were left out.
 
 The catalog is not only pull-based: the initialize handshake's **server instructions** carry
 every capability's name + summary (and, for capabilities marked `"promote": true`, their full
