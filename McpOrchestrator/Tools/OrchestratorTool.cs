@@ -97,7 +97,7 @@ public sealed class OrchestratorTool
         ILogger<OrchestratorTool> logger,
         [Description("Capability name, e.g. 'jira'.")]
         string capability,
-        [Description("Exact downstream tool name as returned by 'discover_tools', e.g. 'get_issue'.")]
+        [Description("Exact downstream tool name, from the capability's instructions or 'discover_tools', e.g. 'get_issue'.")]
         string tool,
         [Description("Arguments object matching the tool's input schema, e.g. {\"issueKey\":\"PROJ-123\"}. Use {} for no arguments. The parameter name is 'arguments', not 'args'.")]
         JsonElement arguments,
@@ -119,12 +119,14 @@ public sealed class OrchestratorTool
                 // MCP C# SDK's binding layer included — genericize the message on the wire
                 // ("An error occurred invoking '<tool>'.") and log the real exception only to
                 // stderr, so attribute the text and attach the stderr captured during the call.
-                var hint = await ToolHintAsync(connections, capability, tool);
+                // Stderr first: the hint's tools/list call would otherwise add its own log lines.
+                var stderr = await CaptureStderrAsync(connections, capability, stderrMark);
+                var hint = await ToolHintAsync(connections, capability, tool, cancellationToken);
                 view = view with
                 {
                     Text = $"Downstream capability '{capability}' tool '{tool}' failed: " +
                         (string.IsNullOrEmpty(view.Text) ? "(no error text from downstream)" : view.Text),
-                    Stderr = await CaptureStderrAsync(connections, capability, stderrMark),
+                    Stderr = stderr,
                     AvailableTools = hint.AvailableTools,
                     InputSchema = hint.InputSchema,
                 };
@@ -145,7 +147,7 @@ public sealed class OrchestratorTool
             // (McpException), a timeout, a connect failure — is relayed with its actual message,
             // attributed to the capability/tool that produced it, never a generic wrapper.
             var stderr = await CaptureStderrAsync(connections, capability, stderrMark);
-            var hint = await ToolHintAsync(connections, capability, tool);
+            var hint = await ToolHintAsync(connections, capability, tool, cancellationToken);
             return OrchestratorJson.Serialize(new ErrorView(
                 $"Downstream capability '{capability}' tool '{tool}' failed: {ex.Message}",
                 Stderr: stderr,
@@ -193,12 +195,21 @@ public sealed class OrchestratorTool
     /// to a few seconds, and any error yields no hint rather than masking the original failure.
     /// </summary>
     private static async Task<(IReadOnlyList<string>? AvailableTools, JsonElement? InputSchema)> ToolHintAsync(
-        IDownstreamConnectionManager connections, string capability, string tool)
+        IDownstreamConnectionManager connections, string capability, string tool, CancellationToken cancellationToken)
     {
+        // A cancelled call gets no hint: nobody is waiting for it.
+        if (cancellationToken.IsCancellationRequested)
+        {
+            return (null, null);
+        }
+
         try
         {
-            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
-            var tools = await connections.ListToolsAsync(capability, timeout.Token);
+            using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            timeout.CancelAfter(TimeSpan.FromSeconds(5));
+            // Untraced: only names or one schema reach the agent, not the manifest a
+            // discover_tools load event stands for in a profile replay.
+            var tools = await connections.ListToolsUntracedAsync(capability, timeout.Token);
             var match = tools.FirstOrDefault(t => string.Equals(t.Name, tool, StringComparison.Ordinal));
             return match is null
                 ? (tools.Select(t => t.Name).ToList(), null)

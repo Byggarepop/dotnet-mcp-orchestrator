@@ -172,5 +172,11 @@ public sealed class OrchestratorToolTests
         Assert.True(failed);
         Assert.True(root.GetProperty("inputSchema").GetProperty("properties").TryGetProperty("issueKey", out _));
         Assert.False(root.TryGetProperty("availableTools", out _));
+
+        // The hint's own tools/list call must not leak into the failing call's stderr.
+        if (root.TryGetProperty("stderr", out var stderr))
+        {
+            Assert.DoesNotContain(stderr.EnumerateArray(), line => line.GetString()!.Contains("tools/list"));
+        }
     }
 }
