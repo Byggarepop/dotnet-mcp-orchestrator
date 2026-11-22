@@ -148,20 +148,35 @@ public sealed class OrchestratorTool
 
     // ----- helpers -----
 
-    /// <summary>Builds the structured <see cref="RouteView"/> returned by <c>route</c>.</summary>
+    /// <summary>
+    /// Builds the structured <see cref="RouteView"/> returned by <c>route</c>, without paying twice
+    /// for the same data on success (see <see cref="ToolPayloads.Compact"/>). The sent arguments are echoed only
+    /// on failure, where they help the model see what went wrong; on success the model already has
+    /// them — it just sent them.
+    /// </summary>
     private static RouteView ToRouteView(
         string capability,
         string tool,
         IReadOnlyDictionary<string, object?> args,
-        CallToolResult result) => new()
+        CallToolResult result)
     {
-        Capability = capability,
-        Tool = tool,
-        IsError = result.IsError ?? false,
-        Text = ToolPayloads.FlattenText(result),
-        Structured = result.StructuredContent,
-        Arguments = ToolPayloads.ArgumentsToNode(args),
-    };
+        var isError = result.IsError ?? false;
+        var flattened = ToolPayloads.FlattenText(result);
+
+        // Failures keep the raw text: Route prefixes it with the failing capability/tool.
+        var (text, structured) = isError
+            ? (flattened, result.StructuredContent)
+            : ToolPayloads.Compact(flattened, result.StructuredContent);
+        return new RouteView
+        {
+            Capability = capability,
+            Tool = tool,
+            IsError = isError,
+            Text = text,
+            Structured = structured,
+            Arguments = isError ? ToolPayloads.ArgumentsToNode(args) : null,
+        };
+    }
 
     /// <summary>
     /// Collects the stderr a capability's process wrote since the given mark, for inclusion in a

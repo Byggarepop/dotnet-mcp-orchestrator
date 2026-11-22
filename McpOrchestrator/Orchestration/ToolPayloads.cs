@@ -104,4 +104,52 @@ internal static class ToolPayloads
         }
         return sb.ToString();
     }
+
+    /// <summary>
+    /// Sends each piece of result data to the model once, in its cheapest form:
+    /// <list type="bullet">
+    /// <item>Structured content present and the text is JSON equal to it → the text is the
+    /// serialized copy of the same data (the MCP compatibility fallback); keep only
+    /// <c>structured</c>. JSON text that differs from the structured content is kept.</item>
+    /// <item>No structured content but the text is a JSON object or array → embed it as JSON in
+    /// <c>structured</c>. As a string, every quote inside it would be escaped again.</item>
+    /// <item>Anything else (plain text, several text blocks, text beside structured data) is kept
+    /// as is.</item>
+    /// </list>
+    /// </summary>
+    public static (string? Text, JsonElement? Structured) Compact(string text, JsonElement? structured)
+    {
+        var parsed = TryParseJsonContainer(text);
+        if (structured is not null)
+        {
+            // Drop the text only when it is the same data; JSON text that differs is kept.
+            return parsed is { } p && JsonElement.DeepEquals(p, structured.Value)
+                ? (null, structured)
+                : (NullIfEmpty(text), structured);
+        }
+
+        return parsed is null ? (NullIfEmpty(text), null) : (null, parsed);
+    }
+
+    private static string? NullIfEmpty(string text) => text.Length == 0 ? null : text;
+
+    /// <summary>The text parsed as JSON when it is exactly one JSON object or array; otherwise null.</summary>
+    private static JsonElement? TryParseJsonContainer(string text)
+    {
+        var trimmed = text.AsSpan().TrimStart();
+        if (trimmed.IsEmpty || (trimmed[0] != '{' && trimmed[0] != '['))
+        {
+            return null;
+        }
+
+        try
+        {
+            using var doc = JsonDocument.Parse(text);
+            return doc.RootElement.Clone();
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
+    }
 }
