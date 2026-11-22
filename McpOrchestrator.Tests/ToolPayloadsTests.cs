@@ -99,6 +99,38 @@ public sealed class ToolPayloadsTests
     }
 
     [Fact]
+    public void Compact_drops_text_wrapped_verbatim_in_a_structured_property()
+    {
+        // The filesystem server's shape: the file text, plus structuredContent {"content": <same text>}.
+        const string file = "<Solution>\r\n  <Project Path=\"A.csproj\" />\r\n</Solution>\r\n";
+        var (text, structured) = ToolPayloads.Compact(
+            file, Json(JsonSerializer.Serialize(new { content = file, path = "A.slnx" })));
+
+        Assert.Null(text);
+        Assert.Equal(file, structured!.Value.GetProperty("content").GetString());
+    }
+
+    [Fact]
+    public void Compact_drops_text_when_structured_content_is_that_string()
+    {
+        var (text, _) = ToolPayloads.Compact("[FILE] a.txt", Json("\"[FILE] a.txt\""));
+
+        Assert.Null(text);
+    }
+
+    [Theory]
+    [InlineData("""{"content":"[FILE] a.txt"}""")]          // only part of the text
+    [InlineData("""{"result":{"content":"[FILE] a.txt\n[FILE] b.txt"}}""")] // nested, not top-level
+    [InlineData("""{"lines":["[FILE] a.txt\n[FILE] b.txt"]}""")]              // inside an array
+    public void Compact_keeps_text_the_structured_content_does_not_hold_at_top_level(string structuredJson)
+    {
+        const string listing = "[FILE] a.txt\n[FILE] b.txt";
+        var (text, _) = ToolPayloads.Compact(listing, Json(structuredJson));
+
+        Assert.Equal(listing, text);
+    }
+
+    [Fact]
     public void Compact_keeps_json_text_that_differs_from_structured_content()
     {
         const string rows = """[{"id":1},{"id":2},{"id":3}]""";

@@ -54,7 +54,7 @@ User: "What's the status of PROJ-1, and scaffold a Customer class with Id, Name,
 
 → list_capabilities()                       (see jira + codegen are available)
 → route("jira", "get_issue", {"issueKey":"PROJ-1"})
-   ← { "text": "{...status: In Progress...}" }
+   ← { "structured": { "key": "PROJ-1", "status": "In Progress", ... } }
 → route("codegen", "generate_class", {"className":"Customer","fields":"Id, Name, Email"})
    ← { "text": "public sealed class Customer { ... }" }
 
