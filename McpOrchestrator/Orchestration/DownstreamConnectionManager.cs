@@ -62,7 +62,15 @@ public sealed partial class DownstreamConnectionManager :
     }
 
     /// <inheritdoc />
-    public async Task<IReadOnlyList<McpClientTool>> ListToolsAsync(string capability, CancellationToken cancellationToken)
+    public Task<IReadOnlyList<McpClientTool>> ListToolsAsync(string capability, CancellationToken cancellationToken) =>
+        ListToolsCoreAsync(capability, recordInTrace: true, cancellationToken);
+
+    /// <inheritdoc />
+    public Task<IReadOnlyList<McpClientTool>> ListToolsUntracedAsync(string capability, CancellationToken cancellationToken) =>
+        ListToolsCoreAsync(capability, recordInTrace: false, cancellationToken);
+
+    private async Task<IReadOnlyList<McpClientTool>> ListToolsCoreAsync(
+        string capability, bool recordInTrace, CancellationToken cancellationToken)
     {
         var descriptor = Resolve(capability);
         var (entry, client) = await AcquireAsync(descriptor, cancellationToken);
@@ -72,8 +80,11 @@ public sealed partial class DownstreamConnectionManager :
             try
             {
                 var tools = await client.ListToolsAsync(new RequestOptions(), call.Token);
-                // Manifest is now resident in the agent's context — the load event a trace replay needs.
-                _trace.Record("discover_tools", descriptor.Name, tool: null);
+                if (recordInTrace)
+                {
+                    // Manifest is now resident in the agent's context — the load event a trace replay needs.
+                    _trace.Record("discover_tools", descriptor.Name, tool: null);
+                }
                 return tools as IReadOnlyList<McpClientTool> ?? tools.ToList();
             }
             catch (OperationCanceledException) when (TimedOut(call, cancellationToken))
