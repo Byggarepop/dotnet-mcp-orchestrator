@@ -46,6 +46,7 @@ host config):
 | `MCP_ORCHESTRATOR_CONFIG_AUTH` | Verbatim `Authorization` header for the central config URL. Set as an OS-level env var, never in a committed file. |
 | `MCP_ORCHESTRATOR_CONFIG_POLL_SECONDS` | Central-config poll interval. Default 300, minimum 10. |
 | `MCP_ORCHESTRATOR_NO_RELOAD` | `1` disables config hot reload (file watching). |
+| `MCP_ORCHESTRATOR_CODE_MODE` | `1` registers the experimental `execute` tool ([code mode](https://github.com/Byggarepop/dotnet-mcp-orchestrator/blob/main/McpOrchestrator/README.md#code-mode-execute-experimental-opt-in)). Unset: not registered, no context cost. |
 | `MCP_ORCHESTRATOR_ON_CONFIG_CHANGE` | Same as `--on-config-change`. |
 | `MCP_ORCHESTRATOR_ON_CONFIG_CHANGE_TIMEOUT_SECONDS` | How long the change script may run before it is killed. Default 120. |
 | `MCP_ORCHESTRATOR_TRACE_OUT` | Same as `--trace-out`. |

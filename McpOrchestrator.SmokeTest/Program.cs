@@ -33,7 +33,12 @@ var transport = new StdioClientTransport(new StdioClientTransportOptions
         ? new[] { "run", "--project", orchestratorProject, "--no-build" }
         : Array.Empty<string>(),
     WorkingDirectory = solutionDir,
-    EnvironmentVariables = new Dictionary<string, string?> { ["MCP_ORCHESTRATOR_CONFIG"] = sampleConfig },
+    EnvironmentVariables = new Dictionary<string, string?>
+    {
+        ["MCP_ORCHESTRATOR_CONFIG"] = sampleConfig,
+        // --check-code-mode switches the experimental execute tool on; otherwise it stays off.
+        ["MCP_ORCHESTRATOR_CODE_MODE"] = args.Contains("--check-code-mode") ? "1" : null,
+    },
 });
 
 await using var client = await McpClient.CreateAsync(transport);
@@ -60,6 +65,24 @@ if (args.Contains("--check-tools"))
     Console.WriteLine(ok
         ? "OK: serves the 6 tools and list_capabilities serialized correctly."
         : $"FAIL: toolsOk={toolsOk} jsonOk={jsonOk}");
+    return ok ? 0 : 1;
+}
+
+// CI/AOT smoke for code mode: the JavaScript interpreter must work in the native binary. Runs a
+// script that exercises closures, JSON, regex and an async function; needs no downstream servers.
+if (args.Contains("--check-code-mode"))
+{
+    var listed = tools.Any(t => t.Name == "execute");
+    var result = await client.CallToolAsync("execute", new Dictionary<string, object?>
+    {
+        ["code"] = "const xs = JSON.parse('[1,2,3]').map(x => x * 2); " +
+                   "return { xs, ok: /^ab+c$/.test('abbbc'), n: await Promise.resolve(42) };",
+    });
+    var text = string.Concat(result.Content.OfType<TextContentBlock>().Select(b => b.Text));
+    var ran = text == """{"result":{"xs":[2,4,6],"ok":true,"n":42},"routeCalls":0}""";
+
+    var ok = listed && ran;
+    Console.WriteLine(ok ? "OK: execute is listed and ran a script." : $"FAIL: listed={listed} result={text}");
     return ok ? 0 : 1;
 }
 

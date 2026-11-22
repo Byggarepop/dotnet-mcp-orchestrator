@@ -87,6 +87,10 @@
          Claude/GPT-4 BPE). Data.Cl100kBase embeds the vocab so counting is offline/CI-friendly
          and AOT-safe (no runtime download). Only the `profile` subcommand touches these; the
          MCP server hot path never instantiates a tokenizer. -->
+    <!-- Experimental code mode (execute tool, opt-in via MCP_ORCHESTRATOR_CODE_MODE=1): a sandboxed
+         JavaScript interpreter written in C#. No CLR access is granted to scripts; the only host
+         function is the route bridge. -->
+    <PackageReference Include="Jint" Version="4.18.0" />
     <PackageReference Include="Microsoft.ML.Tokenizers" Version="2.0.0" />
     <PackageReference Include="Microsoft.ML.Tokenizers.Data.Cl100kBase" Version="2.0.0" />
   </ItemGroup>

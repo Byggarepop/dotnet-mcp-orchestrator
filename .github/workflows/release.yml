@@ -53,6 +53,7 @@ jobs:
         run: |
           chmod +x "out/${{ matrix.exe }}" || true
           dotnet run --project McpOrchestrator.SmokeTest -c Release -- --check-tools
+          dotnet run --project McpOrchestrator.SmokeTest -c Release -- --check-code-mode
 
       - name: Upload native build
         uses: actions/upload-artifact@v7

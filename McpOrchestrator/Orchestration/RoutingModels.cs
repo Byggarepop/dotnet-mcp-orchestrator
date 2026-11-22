@@ -48,6 +48,7 @@ public static class OrchestratorJson
 [JsonSerializable(typeof(DiscoverView))]
 [JsonSerializable(typeof(RouteView))]
 [JsonSerializable(typeof(ErrorView))]
+[JsonSerializable(typeof(ExecuteView))]
 internal sealed partial class OrchestratorJsonContext : JsonSerializerContext;
 
 /// <summary>One capability as advertised to the model by <c>list_capabilities</c>.</summary>
@@ -101,3 +102,11 @@ public sealed record ErrorView(
     IReadOnlyList<string>? Stderr = null,
     IReadOnlyList<string>? AvailableTools = null,
     JsonElement? InputSchema = null);
+
+/// <summary>
+/// The result of code mode's <c>execute</c>: the snippet's return value as JSON, or the error that
+/// stopped it, plus how many downstream calls it made. <see cref="Details"/> carries an uncaught
+/// error's <c>details</c> — for a failed <c>route</c>, its full response (stderr, inputSchema,
+/// availableTools), so the model can fix the call without another discovery step.
+/// </summary>
+public sealed record ExecuteView(JsonElement? Result, string? Error, int RouteCalls, JsonElement? Details = null);
